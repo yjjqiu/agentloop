@@ -87,8 +87,13 @@ Windows 便携版。
 
 更新方式：
 
-- **Windows**：下载新的 `AgentDeck-<版本>-portable.exe`，替换原文件后重启；配置和会话都在 `%APPDATA%\agentdeckd`，不会丢
+- **Windows**：下载新的 `AgentDeck-<版本>-portable.exe`，退出旧进程后替换文件再启动；配置和会话都在 `%APPDATA%\agentdeckd`，不会丢
 - **Linux**：替换 `agentdeckd` 二进制后 `sudo systemctl restart agentdeckd`；或 `docker compose pull && docker compose up -d`
+
+**仓库是私有的**（当前默认）：GitHub 匿名 API 会返回 404，需要给检查更新配一个只读令牌——
+在「设置 → 关于 → 私有仓库 Token」里粘贴 Fine-grained token（只授权本仓库
+`Contents: Read-only`），或给服务进程设环境变量 `GITHUB_TOKEN`（环境变量优先）。
+令牌保存在 `config.json`（权限 0600），界面只显示是否已配置，不回显内容。
 
 发布流程见 [RELEASE.md](RELEASE.md)。
 

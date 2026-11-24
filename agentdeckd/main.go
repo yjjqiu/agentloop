@@ -109,7 +109,7 @@ func main() {
 	app.versions = NewVersionChecker()
 	app.install = NewCliInstaller(app.config, app.versions)
 	app.releases = NewReleaseService(*dataDir)
-	app.updates = NewUpdateService(repoSlug())
+	app.updates = NewUpdateService(repoSlug(), app.config.GitHubTokenValue)
 
 	// 鉴权：-token / 环境变量总是生效；配置文件里的令牌只在对外监听时使用
 	// （本机监听还要求登录会打断桌面版，没必要）。

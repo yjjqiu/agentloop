@@ -23,6 +23,8 @@ services:
     environment:
       AGENTDECK_TOKEN: ${AGENTDECK_TOKEN:?请先在 .env 里设置 AGENTDECK_TOKEN}
       AGENTDECK_REPO: ${AGENTDECK_REPO:-yjjqiu/agentloop}
+      # 私有仓库检查更新用的只读 token（Fine-grained，Contents: Read-only）
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       TZ: ${TZ:-Asia/Shanghai}
       # 容器里装 CLI 常用的 npm 全局目录，配合 /data 持久化。
       NPM_CONFIG_PREFIX: /data/npm-global

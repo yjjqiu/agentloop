@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -32,7 +33,8 @@ type Config struct {
 	LocalBin     string                    `json:"localBin"`
 	Pipelines    map[string]PipelineConfig `json:"pipelines,omitempty"`
 	CliOverrides map[string]CliOverride    `json:"cliOverrides,omitempty"`
-	AuthToken    string                    `json:"authToken,omitempty"` // 对外监听时的访问令牌
+	AuthToken    string                    `json:"authToken,omitempty"`   // 对外监听时的访问令牌
+	GitHubToken  string                    `json:"githubToken,omitempty"` // 私有仓库查更新用的只读 token
 }
 
 // LoadConfig 读配置，文件不存在就用默认值。
@@ -68,7 +70,26 @@ func (c *Config) saveLocked() {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(c.path, raw, 0o644)
+	// 配置里有访问令牌和 GitHub token，只给当前用户读写。
+	if err := os.WriteFile(c.path, raw, 0o600); err != nil {
+		return
+	}
+	_ = os.Chmod(c.path, 0o600)
+}
+
+// GitHubTokenValue 返回私有仓库更新检查用的只读 token（可能为空）。
+func (c *Config) GitHubTokenValue() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.GitHubToken
+}
+
+// SetGitHubToken 写入只读 token 并立即落盘；空字符串表示清除。
+func (c *Config) SetGitHubToken(token string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.GitHubToken = strings.TrimSpace(token)
+	c.saveLocked()
 }
 
 // AuthTokenValue 返回持久化的访问令牌（可能为空）。

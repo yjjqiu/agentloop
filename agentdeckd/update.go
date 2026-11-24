@@ -35,21 +35,41 @@ type UpdateInfo struct {
 type UpdateService struct {
 	mu        sync.Mutex
 	repo      string
+	token     func() string
 	client    *http.Client
 	cache     *UpdateInfo
 	expiresAt time.Time
 }
 
-// NewUpdateService 创建检查器；repo 形如 owner/name。
-func NewUpdateService(repo string) *UpdateService {
+// NewUpdateService 创建检查器；repo 形如 owner/name，token 返回只读访问令牌（可为空）。
+func NewUpdateService(repo string, token func() string) *UpdateService {
 	return &UpdateService{
 		repo:   strings.TrimSpace(repo),
+		token:  token,
 		client: &http.Client{Timeout: 12 * time.Second},
 	}
 }
 
 // Repo 返回发布仓库标识。
 func (s *UpdateService) Repo() string { return s.repo }
+
+// Invalidate 清缓存，令牌变更后让下一次检查立刻重新请求。
+func (s *UpdateService) Invalidate() {
+	s.mu.Lock()
+	s.cache, s.expiresAt = nil, time.Time{}
+	s.mu.Unlock()
+}
+
+// githubToken 返回可用的只读令牌：环境变量优先（服务器部署），其次配置文件（设置页填写）。
+func (s *UpdateService) githubToken() string {
+	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
+		return token
+	}
+	if s.token != nil {
+		return strings.TrimSpace(s.token())
+	}
+	return ""
+}
 
 // Check 返回最新版本；force 为 true 时忽略缓存。
 func (s *UpdateService) Check(force bool) UpdateInfo {
@@ -110,7 +130,8 @@ func (s *UpdateService) latestRelease() (*githubRelease, error) {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "AgentDeck/"+version)
-	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
+	token := s.githubToken()
+	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	resp, err := s.client.Do(req)
@@ -119,7 +140,13 @@ func (s *UpdateService) latestRelease() (*githubRelease, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("仓库 %s 还没有正式发布", s.repo)
+		if token == "" {
+			return nil, fmt.Errorf("仓库 %s 不存在或无权访问（私有仓库请在「设置 → 关于」填只读 Token）", s.repo)
+		}
+		return nil, fmt.Errorf("仓库 %s 没有正式发布，或 Token 无权访问此仓库", s.repo)
+	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return nil, fmt.Errorf("GitHub 返回 %s：Token 无效、过期或没有 Contents 读权限", resp.Status)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GitHub 返回 %s（可能触发了限流）", resp.Status)

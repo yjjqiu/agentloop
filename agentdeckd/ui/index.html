@@ -377,6 +377,22 @@
             </div>
             <pre id="updateNotes" class="update-notes" hidden></pre>
           </div>
+          <div class="update-box" id="ghTokenBox">
+            <div class="update-line">
+              <b>私有仓库 Token</b>
+              <small id="ghTokenState">未配置</small>
+            </div>
+            <div class="field" style="margin:0">
+              <div class="row">
+                <input id="ghTokenInput" type="password" spellcheck="false" autocomplete="off" placeholder="github_pat_…（只读 Contents 权限）">
+                <button id="ghTokenSave" class="btn mini primary" type="button">保存</button>
+                <button id="ghTokenClear" class="btn mini" type="button" hidden>清除</button>
+              </div>
+            </div>
+            <p class="pane-hint">仓库是私有时，检查更新需要只读令牌：GitHub → Settings → Developer settings →
+              Fine-grained tokens，只授权 <code>yjjqiu/agentloop</code> 的 <code>Contents: Read-only</code>。
+              服务器部署也可以改用环境变量 <code>GITHUB_TOKEN</code>，两者以环境变量优先。</p>
+          </div>
           <p class="pane-hint">Windows 便携版：先退出 AgentDeck，用新文件替换 <code>AgentDeck-&lt;版本&gt;-portable.exe</code>，再启动。
             Linux 服务器：替换 <code>agentdeckd</code> 二进制后 <code>systemctl restart agentdeckd</code>，或 <code>docker compose pull</code> 后重建容器。</p>
         </div>

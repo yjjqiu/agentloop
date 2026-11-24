@@ -116,8 +116,12 @@ curl -s "http://127.0.0.1:3210/api/v1/update/check?force=1"
 
 ## 6. 仓库设置注意
 
-- **仓库需要公开**：daemon 匿名调用 GitHub API 查最新版；私有仓库会返回 404。
-  若必须私有，给服务进程配只读 `GITHUB_TOKEN`（`agentdeckd/update.go` 已支持）。
+- **私有仓库要配只读令牌**：daemon 查 GitHub API 时匿名请求对私有仓库返回 404。
+  到 GitHub → Settings → Developer settings → Fine-grained tokens 创建令牌：
+  Repository access 只选 `agentloop`，权限只给 `Contents: Read-only`。然后二选一：
+  - 应用内：设置 → 关于 → 私有仓库 Token → 保存（写进 `config.json`，0600，只显示是否已配置）
+  - 服务器：环境变量 `GITHUB_TOKEN`（优先级更高，适合 systemd `agentdeck.env` / docker compose）
+  令牌过期或权限不足时「关于」页会提示原因。
 - **GHCR 镜像**：workflow 已带 `packages: write`；首次推送后到仓库 Packages 里把镜像可见性设为 public，
   否则服务器 `docker pull` 需要登录。
 - **Windows 便携版未签名**：首次运行 SmartScreen 会提示，属正常现象；要做正式分发可加代码签名证书。

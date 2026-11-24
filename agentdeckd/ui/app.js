@@ -1983,11 +1983,25 @@ function renderUpdate(info) {
   badge.hidden = true;
 }
 
+// 私有仓库令牌状态：只显示「已配置/未配置」，不回显令牌本身。
+function renderGithubToken(configured, fromEnv) {
+  const state = $('ghTokenState');
+  const clear = $('ghTokenClear');
+  if (!state) return;
+  if (fromEnv) {
+    state.textContent = '由环境变量 GITHUB_TOKEN 提供';
+  } else {
+    state.textContent = configured ? '已配置（不显示令牌）' : '未配置（私有仓库必需）';
+  }
+  if (clear) clear.hidden = !configured || fromEnv;
+}
+
 async function refreshAbout(force = false) {
-  const [health, shell, update] = await Promise.all([
+  const [health, shell, update, cfg] = await Promise.all([
     req('/api/v1/health').catch(() => null),
     shellApi?.info ? shellApi.info().catch(() => null) : Promise.resolve(null),
     req(`/api/v1/update/check${force ? '?force=1' : ''}`).catch(() => null),
+    req('/api/v1/config').catch(() => null),
   ]);
   if (health) {
     appHealth = health;
@@ -2002,6 +2016,7 @@ async function refreshAbout(force = false) {
     if (sideVer) sideVer.textContent = `v${appVersion}`;
     document.title = `AgentDeck v${appVersion}`;
   }
+  if (cfg) renderGithubToken(Boolean(cfg.githubTokenSet), Boolean(cfg.githubTokenEnv));
   renderUpdate(update);
 }
 
@@ -2216,6 +2231,33 @@ $('updateCheck').addEventListener('click', async () => {
 $('updateBadge').addEventListener('click', () => {
   openSettings('about').catch((error) => alert(`打开设置失败：${error.message || error}`));
 });
+// 私有仓库只读 Token：保存后立即清缓存重查一次，状态只显示是否配置。
+async function saveGithubToken(value) {
+  const button = value ? $('ghTokenSave') : $('ghTokenClear');
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = '保存中…';
+  try {
+    const res = await req('/api/v1/config', { method: 'POST', body: JSON.stringify({ githubToken: value }) });
+    $('ghTokenInput').value = '';
+    renderGithubToken(Boolean(res?.githubTokenSet), false);
+    await refreshAbout(true);
+  } catch (error) {
+    alert(`保存失败：${error.message || error}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+$('ghTokenSave').addEventListener('click', () => {
+  const value = $('ghTokenInput').value.trim();
+  if (!value) {
+    $('ghTokenInput').focus();
+    return;
+  }
+  saveGithubToken(value);
+});
+$('ghTokenClear').addEventListener('click', () => saveGithubToken(''));
 $('cliSetFilter').addEventListener('input', (event) => {
   cliSetQuery = event.target.value;
   renderCliSettings();

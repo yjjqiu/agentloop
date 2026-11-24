@@ -44,16 +44,19 @@ func (a *App) registerSystemRoutes(mux *http.ServeMux) {
 		a.config.mu.RLock()
 		defer a.config.mu.RUnlock()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"lastCwd":  a.config.LastCwd,
-			"home":     homeDir(),
-			"localBin": a.config.LocalBin,
+			"lastCwd":        a.config.LastCwd,
+			"home":           homeDir(),
+			"localBin":       a.config.LocalBin,
+			"githubTokenSet": a.config.GitHubToken != "",
+			"githubTokenEnv": strings.TrimSpace(os.Getenv("GITHUB_TOKEN")) != "",
 		})
 	})
 
 	mux.HandleFunc("POST /api/v1/config", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			LastCwd  string `json:"lastCwd"`
-			LocalBin string `json:"localBin"`
+			LastCwd     string  `json:"lastCwd"`
+			LocalBin    string  `json:"localBin"`
+			GitHubToken *string `json:"githubToken"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "请求体不是 JSON")
@@ -65,7 +68,11 @@ func (a *App) registerSystemRoutes(mux *http.ServeMux) {
 		if body.LocalBin != "" {
 			a.config.SetLocalBin(body.LocalBin)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+		if body.GitHubToken != nil {
+			a.config.SetGitHubToken(*body.GitHubToken)
+			a.updates.Invalidate()
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "githubTokenSet": a.config.GitHubTokenValue() != ""})
 	})
 }
 

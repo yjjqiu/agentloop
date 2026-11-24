@@ -60,6 +60,8 @@ else
 AGENTDECK_TOKEN=$token
 AGENTDECK_REPO=${AGENTDECK_REPO:-yjjqiu/agentloop}
 PATH=$INSTALL_DIR/npm-global/bin:/usr/local/bin:/usr/bin:/bin
+# 私有仓库检查更新用的只读令牌（Fine-grained: 本仓库 Contents Read-only）
+# GITHUB_TOKEN=github_pat_xxx
 EOF
   chmod 0600 "$ETC_DIR/agentdeck.env"
   echo "• 已生成访问令牌并写入 $ETC_DIR/agentdeck.env（权限 0600）"

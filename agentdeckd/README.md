@@ -187,7 +187,9 @@ CLI 列表顶部有两个版本操作：
 - 更新源：GitHub Releases `releases/latest`，仓库 `yjjqiu/agentloop`（`AGENTDECK_REPO` 可覆盖）
 - 比较：点分版本号逐段比较；只有正式发布（非 prerelease）参与
 - 缓存：成功 30 分钟、失败 2 分钟；设置页「检查更新」带 `force=1`
-- 限制：GitHub 匿名 API 有配额，容器 / 服务器上访问受限时可配只读 `GITHUB_TOKEN`
+- 限制：GitHub 匿名 API 对私有仓库返回 404——在「设置 → 关于」填只读 Token（Fine-grained，
+  仅本仓库 `Contents: Read-only`，存 `config.json` 0600），或给进程设 `GITHUB_TOKEN`（优先级更高）；
+  令牌变更后自动清缓存重查。环境变量里设了令牌时，界面显示「由环境变量提供」，不能在界面清除。
 - 前端只负责展示和给下载链接，安装动作交给用户（替换文件 / 重启服务）
 
 ## 访问令牌
@@ -272,6 +274,7 @@ Linux / macOS 走 `creack/pty`：`/bin/sh -c "exec <命令>"` 起进程，`TERM=
   "lastCwd": "E:/path/to/project",
   "localBin": "E:\\LoopForge\\local\\bin\\loopforge.mjs",
   "authToken": "对外监听时自动生成的访问令牌",
+  "githubToken": "私有仓库检查更新用的只读令牌（可选，环境变量 GITHUB_TOKEN 优先）",
   "cliOverrides": {
     "claude-code": { "path": "C:\\Users\\me\\AppData\\Roaming\\npm\\claude.cmd", "args": ["--dangerously-skip-permissions"] },
     "aider": { "enabled": false, "package": "aider-chat" }
