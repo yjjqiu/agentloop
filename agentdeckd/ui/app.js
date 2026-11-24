@@ -81,9 +81,7 @@ const api = {
   removeProject: (path) => req('/api/v1/projects/remove', { method: 'POST', body: JSON.stringify({ path }) })
     .then(() => api.projects()),
   addProject: async () => {
-    let dir = '';
-    if (shellApi?.pickDir) dir = await shellApi.pickDir();
-    else dir = window.prompt('项目路径', '') || '';
+    const dir = await api.pickDir();
     if (!dir) return { canceled: true };
     await req('/api/v1/projects', { method: 'POST', body: JSON.stringify({ path: dir }) });
     return { canceled: false, active: dir };
@@ -114,7 +112,12 @@ const api = {
     { method: 'POST' },
   ).catch(() => {}),
   kill: (id) => req(`/api/v1/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {}),
-  pickDir: () => (shellApi?.pickDir ? shellApi.pickDir() : Promise.resolve(window.prompt('目录路径', '') || '')),
+  listDirs: (path) => req(`/api/v1/fs/list?path=${encodeURIComponent(path || '')}`),
+  mkdirDir: (parent, name) => req('/api/v1/fs/mkdir', {
+    method: 'POST',
+    body: JSON.stringify({ parent, name }),
+  }),
+  pickDir: () => (shellApi?.pickDir ? shellApi.pickDir() : openDirPicker(state.active || dirCurrent)),
 };
 
 const $ = (id) => document.getElementById(id);
@@ -713,6 +716,76 @@ function settleConfirm(ok) {
   const resolve = confirmResolve;
   confirmResolve = null;
   if (resolve) resolve(ok);
+}
+
+// —— 目录选择（浏览器模式）——
+// 桌面端用 Electron 的原生选择框；服务器上只能浏览服务端目录，所以走 /api/v1/fs/list。
+let dirPickerResolve = null;
+let dirCurrent = '';
+
+function openDirPicker(initial) {
+  return new Promise((resolve) => {
+    dirPickerResolve = resolve;
+    $('dirModal').hidden = false;
+    $('dirError').hidden = true;
+    $('dirNewRow').hidden = true;
+    $('dirNewName').value = '';
+    loadDir(initial || '');
+  });
+}
+
+function closeDirPicker(value) {
+  $('dirModal').hidden = true;
+  const resolve = dirPickerResolve;
+  dirPickerResolve = null;
+  if (resolve) resolve(value || '');
+}
+
+async function loadDir(path) {
+  const errorEl = $('dirError');
+  try {
+    const listing = await api.listDirs(path);
+    dirCurrent = listing.path;
+    $('dirPath').value = listing.path;
+    $('dirUp').disabled = !listing.parent;
+    $('dirUp').dataset.parent = listing.parent || '';
+    const list = $('dirList');
+    list.textContent = '';
+    if (!listing.dirs?.length) {
+      const empty = document.createElement('p');
+      empty.className = 'dir-empty';
+      empty.textContent = '这里没有子目录，可以直接选择，或者新建一个';
+      list.appendChild(empty);
+    }
+    for (const entry of listing.dirs || []) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'dir-item';
+      item.innerHTML = '<span class="dir-ico">▸</span><span class="dir-name"></span>';
+      item.querySelector('.dir-name').textContent = entry.name;
+      item.title = entry.path;
+      item.addEventListener('click', () => loadDir(entry.path));
+      list.appendChild(item);
+    }
+    errorEl.hidden = true;
+  } catch (error) {
+    errorEl.textContent = String(error.message || error);
+    errorEl.hidden = false;
+  }
+}
+
+async function createDir() {
+  const name = $('dirNewName').value.trim();
+  if (!name) return;
+  try {
+    const res = await api.mkdirDir(dirCurrent, name);
+    $('dirNewRow').hidden = true;
+    await loadDir(res.path);
+  } catch (error) {
+    const errorEl = $('dirError');
+    errorEl.textContent = String(error.message || error);
+    errorEl.hidden = false;
+  }
 }
 
 // —— 右栏：阶段图 ——
@@ -2293,9 +2366,46 @@ $('confirmNo').addEventListener('click', () => settleConfirm(false));
 $('confirmModal').addEventListener('click', (event) => {
   if (event.target === $('confirmModal')) settleConfirm(false);
 });
+// —— 目录选择弹窗 ——
+$('dirCancel').addEventListener('click', () => closeDirPicker(''));
+$('dirChoose').addEventListener('click', () => closeDirPicker(dirCurrent));
+$('dirUp').addEventListener('click', () => {
+  const parent = $('dirUp').dataset.parent;
+  if (parent) loadDir(parent);
+});
+$('dirGo').addEventListener('click', () => loadDir($('dirPath').value.trim()));
+$('dirPath').addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  loadDir($('dirPath').value.trim());
+});
+$('dirMkdir').addEventListener('click', () => {
+  $('dirNewRow').hidden = false;
+  $('dirNewName').value = '';
+  $('dirNewName').focus();
+});
+$('dirNewCancel').addEventListener('click', () => { $('dirNewRow').hidden = true; });
+$('dirNewCreate').addEventListener('click', createDir);
+$('dirNewName').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    createDir();
+  }
+  if (event.key === 'Escape') {
+    event.stopPropagation();
+    $('dirNewRow').hidden = true;
+  }
+});
+$('dirModal').addEventListener('click', (event) => {
+  if (event.target === $('dirModal')) closeDirPicker('');
+});
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   closeProjectMenu();
+  if (!$('dirModal').hidden) {
+    closeDirPicker('');
+    return;
+  }
   if (!$('confirmModal').hidden) {
     settleConfirm(false);
     return;

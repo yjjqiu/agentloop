@@ -151,6 +151,8 @@ CLI 列表顶部有两个版本操作：
 | POST | `/api/v1/projects/active` | 切当前项目 `{path}` |
 | GET | `/api/v1/workflows?root=` | 扫 `artifacts/*/workflow-state.json` |
 | GET/POST | `/api/v1/config` | 读取/保存 `lastCwd`、`localBin` |
+| GET | `/api/v1/fs/list?path=` | 浏览器模式的目录浏览：列出子目录 `{path,parent,home,dirs:[{name,path}]}`（隐藏目录不列，传绝对路径可直接进） |
+| POST | `/api/v1/fs/mkdir` | 新建单级目录 `{parent,name}`，返回 `{ok,path}`；名称不允许带 `/`、`\` |
 | GET | `/api/v1/clis` | 探测注册表里的 44 款 CLI，返回 `{id,label,bin,path,installed,enabled,args,defaultArgs,overridePath,overrideArgs,overridePkg,packageName,detectedPkg,npmManaged,updateCmd,command,repo,stages,fitNote}`，已安装的排前面 |
 | GET | `/api/v1/clis/release?id=&refresh=1` | 该 CLI 最新版本的发布说明 `{info:{repo,tag,version,title,publishedAt,url,body,zh,translated,note,error}}`，翻译结果缓存，`refresh=1` 重新拉取 |
 | POST | `/api/v1/clis/config` | 保存单款 CLI 覆盖 `{id,path,args[],package,enabled?}`，返回 `{ok,clis}` |

@@ -496,6 +496,33 @@
   </div>
 </div>
 
+<div class="modal" id="dirModal" hidden>
+  <div class="modal-card narrow dir-card">
+    <div class="modal-head">
+      <h2>选择目录</h2>
+      <p>浏览服务端的目录；空目录可以就地新建文件夹。</p>
+    </div>
+    <div class="dir-bar">
+      <button id="dirUp" class="btn mini" type="button" title="上一级">↑</button>
+      <input id="dirPath" type="text" spellcheck="false" autocomplete="off" placeholder="/workspace">
+      <button id="dirGo" class="btn mini" type="button">跳转</button>
+    </div>
+    <div class="dir-list" id="dirList"></div>
+    <p class="dir-error" id="dirError" hidden></p>
+    <div class="dir-new" id="dirNewRow" hidden>
+      <input id="dirNewName" type="text" placeholder="新文件夹名称" spellcheck="false" autocomplete="off">
+      <button id="dirNewCreate" class="btn mini primary" type="button">创建</button>
+      <button id="dirNewCancel" class="btn mini" type="button">取消</button>
+    </div>
+    <div class="modal-foot">
+      <button id="dirMkdir" class="btn mini" type="button">新建文件夹</button>
+      <span class="modal-hint"><kbd>Esc</kbd> 取消</span>
+      <button id="dirCancel" class="btn" type="button">取消</button>
+      <button id="dirChoose" class="btn primary" type="button">选择此目录</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="modal" hidden>
   <div class="modal-card">
     <div class="modal-head">

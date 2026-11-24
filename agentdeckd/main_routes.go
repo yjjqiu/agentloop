@@ -19,6 +19,7 @@ func (a *App) routes(mux *http.ServeMux) {
 	a.registerCliRoutes(mux)
 	a.registerPipelineRoutes(mux)
 	a.registerSessionRoutes(mux)
+	a.registerFsRoutes(mux)
 }
 
 // registerSystemRoutes 系统：探活与配置。

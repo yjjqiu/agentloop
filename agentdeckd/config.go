@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-// 项目默认指向仓库里的 LoopForge Local 入口，可在配置里覆盖。
-const defaultLocalBin = `E:\LoopForge\local\bin\loopforge.mjs`
+// 项目默认指向仓库里的 LoopForge Local 入口（Windows），可在配置里覆盖；
+// 其它平台没有约定路径，默认留空，见 localbin_unix.go。
 
 // CliOverride 是某个 CLI 的本地覆盖设置（路径 / 默认参数 / npm 包名 / 是否启用）。
 type CliOverride struct {
@@ -53,9 +53,10 @@ func LoadConfig(dir string) *Config {
 		log.Printf("配置格式错误，使用默认值: %v", err)
 		return cfg
 	}
-	if cfg.LocalBin == "" {
+	if cfg.LocalBin == "" && defaultLocalBin != "" {
 		cfg.LocalBin = defaultLocalBin
 	}
+	cfg.LocalBin = normalizeLocalBin(cfg.LocalBin)
 	if cfg.Pipelines == nil {
 		cfg.Pipelines = map[string]PipelineConfig{}
 	}

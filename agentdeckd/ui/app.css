@@ -978,6 +978,60 @@ kbd {
 
 .modal-foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .modal-hint { margin-right: auto; font-size: 11px; color: var(--text-faint); display: inline-flex; align-items: center; gap: 5px; }
+
+/* —— 目录选择（浏览器模式）—— */
+.dir-card { width: min(560px, 92vw); }
+.dir-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+.dir-bar input,
+.dir-new input {
+  min-width: 0;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  outline: none;
+  transition: border-color .12s, background .12s;
+}
+.dir-bar input { flex: 1; }
+.dir-bar input:focus,
+.dir-new input:focus { border-color: rgba(var(--accent-rgb), .5); background: var(--surface); }
+.dir-bar .btn:disabled { opacity: .45; cursor: default; }
+.dir-list {
+  min-height: 190px;
+  max-height: 300px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.dir-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.dir-item:hover { background: var(--surface-3); }
+.dir-ico { color: var(--text-faint); font-size: 10px; }
+.dir-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dir-empty { margin: 0; padding: 10px; color: var(--text-faint); font-size: 12px; }
+.dir-error { margin: 8px 0 0; color: var(--red); font-size: 12px; }
+.dir-new { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.dir-new input { flex: 1; }
 /* —— CLI 设置 —— */
 .modal-card.wide {
   width: min(980px, 94vw);
