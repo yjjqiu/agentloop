@@ -116,8 +116,9 @@ curl -s "http://127.0.0.1:3210/api/v1/update/check?force=1"
 
 ## 6. 仓库设置注意
 
-- **私有仓库要配只读令牌**：daemon 查 GitHub API 时匿名请求对私有仓库返回 404。
-  到 GitHub → Settings → Developer settings → Fine-grained tokens 创建令牌：
+- **仓库当前是公开的**：更新检查匿名可读，不需要额外配置。
+  如果以后改回私有，daemon 的匿名请求会返回 404，需要配一个只读令牌：
+  到 GitHub → Settings → Developer settings → Fine-grained tokens 创建令牌，
   Repository access 只选 `agentloop`，权限只给 `Contents: Read-only`。然后二选一：
   - 应用内：设置 → 关于 → 私有仓库 Token → 保存（写进 `config.json`，0600，只显示是否已配置）
   - 服务器：环境变量 `GITHUB_TOKEN`（优先级更高，适合 systemd `agentdeck.env` / docker compose）

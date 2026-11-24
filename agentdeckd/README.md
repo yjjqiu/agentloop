@@ -187,7 +187,7 @@ CLI 列表顶部有两个版本操作：
 - 更新源：GitHub Releases `releases/latest`，仓库 `yjjqiu/agentloop`（`AGENTDECK_REPO` 可覆盖）
 - 比较：点分版本号逐段比较；只有正式发布（非 prerelease）参与
 - 缓存：成功 30 分钟、失败 2 分钟；设置页「检查更新」带 `force=1`
-- 限制：GitHub 匿名 API 对私有仓库返回 404——在「设置 → 关于」填只读 Token（Fine-grained，
+- 私有仓库：GitHub 匿名 API 返回 404——在「设置 → 关于」填只读 Token（Fine-grained，
   仅本仓库 `Contents: Read-only`，存 `config.json` 0600），或给进程设 `GITHUB_TOKEN`（优先级更高）；
   令牌变更后自动清缓存重查。环境变量里设了令牌时，界面显示「由环境变量提供」，不能在界面清除。
 - 前端只负责展示和给下载链接，安装动作交给用户（替换文件 / 重启服务）

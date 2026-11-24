@@ -140,10 +140,13 @@ func (s *UpdateService) latestRelease() (*githubRelease, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
+		if s.repoAccessible(token) {
+			return nil, fmt.Errorf("仓库 %s 还没有正式发布（推送 tag v* 后由 CI 自动创建）", s.repo)
+		}
 		if token == "" {
 			return nil, fmt.Errorf("仓库 %s 不存在或无权访问（私有仓库请在「设置 → 关于」填只读 Token）", s.repo)
 		}
-		return nil, fmt.Errorf("仓库 %s 没有正式发布，或 Token 无权访问此仓库", s.repo)
+		return nil, fmt.Errorf("仓库 %s 不存在，或 Token 没有 Contents 读权限", s.repo)
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		return nil, fmt.Errorf("GitHub 返回 %s：Token 无效、过期或没有 Contents 读权限", resp.Status)
@@ -159,6 +162,25 @@ func (s *UpdateService) latestRelease() (*githubRelease, error) {
 		return nil, fmt.Errorf("发布信息里没有版本号")
 	}
 	return &release, nil
+}
+
+// repoAccessible 判断仓库本身能否访问，用来区分「还没有发布」和「没有权限」。
+func (s *UpdateService) repoAccessible(token string) bool {
+	req, err := http.NewRequest(http.MethodGet, "https://api.github.com/repos/"+s.repo, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "AgentDeck/"+version)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }
 
 // compareVersion 比较点分版本号，返回 a 相对 b 的大小。
