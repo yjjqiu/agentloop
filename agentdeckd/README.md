@@ -218,6 +218,11 @@ CLI 列表顶部有两个版本操作：
 | `deploy/agentdeckd.service` | 手装用的 unit 参考（路径 /opt/agentdeck、/var/lib/agentdeck） |
 | `deploy/agentdeck.env.example` | 环境变量模板（令牌、仓库、PATH） |
 | `deploy/nginx-agentdeck.conf` | HTTPS 反代，SSE 不缓冲 |
+| `deploy/caddy-agentdeck.conf` | Caddy 反代示例：自动 HTTPS，SSE 不缓冲；无域名时可按 IP 走 HTTP |
+
+反代记得别缓冲 SSE（终端实时输出走 `/api/v1/sessions/{id}/stream`）：Nginx 用
+`proxy_buffering off`，Caddy 用 `flush_interval -1`。daemon 只看 `X-Forwarded-Proto` 判断是否发
+`Secure` Cookie，Caddy 会自动带上，Nginx 要手动转发。
 
 注意：容器 / 服务用户里要自己装 CLI（`npm i -g @anthropic-ai/claude-code` 等），
 AgentDeck 的「CLI 设置」页也能装，装到 `NPM_CONFIG_PREFIX` 指向的目录。

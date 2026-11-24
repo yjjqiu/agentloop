@@ -57,10 +57,13 @@ export AGENTDECK_TOKEN=换成足够长的随机串
 docker compose up -d --build
 ```
 
-详见 `agentdeckd/docker-compose.yml`。生产环境建议前面加 Nginx + HTTPS：
+详见 `agentdeckd/docker-compose.yml`。生产环境建议前面加 HTTPS 反代，两个示例都在 `agentdeckd/deploy/`：
 
 ```bash
+# Nginx（配好域名和证书后）
 sudo cp agentdeckd/deploy/nginx-agentdeck.conf /etc/nginx/conf.d/agentdeck.conf
+# 或 Caddy（自动签证书；无域名时可按 IP 直连 HTTP）
+sudo cat agentdeckd/deploy/caddy-agentdeck.conf >> /etc/caddy/Caddyfile
 ```
 
 ## 访问令牌（鉴权）
