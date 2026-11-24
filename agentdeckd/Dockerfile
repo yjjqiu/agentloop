@@ -32,8 +32,8 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update \
       ca-certificates curl git openssh-client tzdata ripgrep less procps \
  && rm -rf /var/lib/apt/lists/*
 
-# 非 root 运行；/data 存配置和会话状态，/workspace 用来挂载要开发的项目。
-RUN useradd -m -u 1000 -s /bin/bash agentdeck \
+# 非 root 运行；基础镜像 node 已经占用 1000，这里让系统自动分配 UID。
+RUN useradd -m -s /bin/bash agentdeck \
  && mkdir -p /data /workspace \
  && chown -R agentdeck:agentdeck /data /workspace
 
