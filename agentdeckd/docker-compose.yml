@@ -1,0 +1,38 @@
+# AgentDeck 服务端部署（daemon + 浏览器访问）
+#
+#   1. 在服务器上准备 .env（同目录），至少写一行：
+#        AGENTDECK_TOKEN=换成足够长的随机串
+#   2. docker compose up -d --build
+#   3. 浏览器打开 http://服务器地址:3210 ，输入上面的令牌
+#
+# 默认只把端口绑到 127.0.0.1，配合 Nginx/HTTPS 反代更安全；
+# 想直接对局域网开放就把 ports 改成 "3210:3210"。
+
+services:
+  agentdeckd:
+    build:
+      context: .
+      args:
+        VERSION: ${AGENTDECK_VERSION:-dev}
+    image: agentdeckd:${AGENTDECK_VERSION:-dev}
+    container_name: agentdeckd
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:3210:3210"
+    environment:
+      AGENTDECK_TOKEN: ${AGENTDECK_TOKEN:?请先在 .env 里设置 AGENTDECK_TOKEN}
+      AGENTDECK_REPO: ${AGENTDECK_REPO:-yjjqiu/agentloop}
+      TZ: ${TZ:-Asia/Shanghai}
+      # 容器里装 CLI 常用的 npm 全局目录，配合 /data 持久化。
+      NPM_CONFIG_PREFIX: /data/npm-global
+      PATH: /data/npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    volumes:
+      # 配置、会话状态、npm 全局包都放数据卷里，重建容器不丢。
+      - agentdeck-data:/data
+      # 要交给 AgentDeck 开发的项目目录（按需改成本机路径）。
+      - ${AGENTDECK_WORKSPACE:-./workspace}:/workspace
+    command: ["-addr", "0.0.0.0:3210", "-data", "/data"]
+
+volumes:
+  agentdeck-data:

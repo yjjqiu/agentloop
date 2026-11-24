@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>AgentDeck</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="vendor/xterm.css">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="board.css">
+</head>
+<body>
+<div class="app">
+  <header class="titlebar" id="titlebar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 20 20" aria-hidden="true">
+        <rect x="1.5" y="2.5" width="17" height="15" rx="4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M6 8.2 8.4 10.4 6 12.6M11 12.8h3.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="brand-name">AgentDeck</span>
+    </div>
+    <nav class="appmenu" id="appMenu">
+      <button class="menu-btn" type="button" data-menu="file">文件</button>
+      <button class="menu-btn" type="button" data-menu="view">视图</button>
+      <div class="menu-pop" id="menuFile" hidden>
+        <button type="button" data-action="new-session">新建终端 <kbd>Ctrl</kbd><kbd>T</kbd></button>
+        <button type="button" data-action="close-session">关闭当前终端 <kbd>Ctrl</kbd><kbd>W</kbd></button>
+        <span class="menu-sep"></span>
+        <button type="button" data-action="restart-daemon">重启本地服务</button>
+        <span class="menu-sep"></span>
+        <button type="button" data-action="quit">退出</button>
+      </div>
+      <div class="menu-pop" id="menuView" hidden>
+        <button type="button" data-action="reload">重新加载</button>
+        <button type="button" data-action="devtools">开发者工具</button>
+        <span class="menu-sep"></span>
+        <button type="button" data-action="zoom-reset">重置缩放</button>
+        <button type="button" data-action="zoom-in">放大</button>
+        <button type="button" data-action="zoom-out">缩小</button>
+        <span class="menu-sep"></span>
+        <button type="button" data-action="fullscreen">切换全屏</button>
+      </div>
+    </nav>
+    <div class="crumb" id="topbarHint">未选择会话</div>
+    <button id="updateBadge" class="update-badge" type="button" hidden title="发现新版本，点击查看">有新版</button>
+    <div class="win-controls" id="winControls" hidden>
+      <button class="win-btn" id="winMin" type="button" title="最小化" aria-label="最小化">
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+      </button>
+      <button class="win-btn" id="winMax" type="button" title="最大化" aria-label="最大化">
+        <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.4" y="2.4" width="7.2" height="7.2" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>
+      </button>
+      <button class="win-btn close" id="winClose" type="button" title="关闭" aria-label="关闭">
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.2 3.2l5.6 5.6M8.8 3.2l-5.6 5.6" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="side-head">
+        <span class="side-label">项目</span>
+        <button id="addProject" class="icon-btn" type="button" title="添加项目">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="side-scroll" id="projList"></div>
+      <div class="side-foot">
+        <button id="openSettings" class="side-set" type="button" title="设置">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 1.6v2M8 12.4v2M1.6 8h2M12.4 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+          <span>设置</span>
+        </button>
+        <span class="side-keys"><kbd>Ctrl</kbd><kbd>T</kbd> 新建 <span class="dot-sep"></span> <kbd>Ctrl</kbd><kbd>W</kbd> 关闭</span>
+        <span class="side-ver" id="sideVer">v—</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="proj-view">
+        <div class="proj-bar">
+          <span class="proj-badge" id="pbBadge"></span>
+          <span class="pb-name" id="pbName">未选择项目</span>
+          <span class="pb-path" id="pbPath"></span>
+          <button id="backToBoard" class="btn mini ghost" type="button" hidden>← 看板</button>
+        </div>
+
+        <div class="term-card" hidden>
+          <div class="term-bar">
+            <span class="term-ava" id="termAva"></span>
+            <span class="term-dot" id="termDot"></span>
+            <span class="term-title" id="termTitle">没有活动终端</span>
+            <span class="pill" id="termBadge" hidden></span>
+            <span class="term-spacer"></span>
+            <span class="term-cwd" id="termCwd"></span>
+            <button id="termRestart" class="icon-btn" type="button" title="重启终端" hidden>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.6V5.2h-2.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <button id="termClose" class="icon-btn" type="button" title="关闭终端" hidden>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </button>
+            <button id="termNew" class="btn-icon subtle" type="button" title="新建终端">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.2v9.6M3.2 8h9.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              <span>新终端</span>
+            </button>
+          </div>
+          <div class="terminal-wrap" id="terminalWrap">
+            <div id="terminal" class="terminal"></div>
+            <div class="empty" id="emptyState">
+              <div class="empty-art">
+                <svg viewBox="0 0 64 64" aria-hidden="true">
+                  <rect x="7" y="12" width="50" height="40" rx="9" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M9 21h46" stroke="currentColor" stroke-width="1.5"/>
+                  <path d="M20 32l5 4.5-5 4.5M30 41.5h9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+              <h3>还没有终端会话</h3>
+              <p>在任意项目下开一个 Claude Code、Codex、Gemini 等 44 款 CLI 的终端，工作流状态会同步到右侧。</p>
+              <button id="emptyNew" class="btn primary" type="button">新建终端 <kbd>Ctrl T</kbd></button>
+            </div>
+          </div>
+        </div>
+
+        <section class="board-panel" id="projectBoard">
+          <div class="board-head">
+            <div class="board-hero">
+              <div class="board-eyebrow">
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.2h10M3 8h10M3 11.8h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                项目看板
+              </div>
+              <h2>把需求跑成<span>可交付的结果</span>。</h2>
+              <p class="board-sub" id="boardSub">只显示当前项目的任务</p>
+            </div>
+            <aside class="board-side">
+              <span class="bs-label">当前项目</span>
+              <strong id="boardProject">—</strong>
+              <span class="bs-path" id="boardMeta"></span>
+              <span class="bs-mode"><i class="bs-dot"></i><span id="boardMode">AgentDeck 驱动 · 每阶段独立终端</span></span>
+              <button id="newPipeline" class="btn primary" type="button">新建流水线</button>
+            </aside>
+          </div>
+          <div class="lanes" id="lanes">
+            <section class="lane" data-lane="queued">
+              <header>
+                <span class="lane-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 5v3.3l2.1 1.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
+                <span class="lane-name">排队</span>
+                <span class="lane-count">0</span>
+              </header>
+              <p class="lane-note">等待启动</p>
+              <div class="lane-body"></div>
+            </section>
+            <section class="lane" data-lane="working">
+              <header>
+                <span class="lane-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 4.8v3.4l2.2 1.3" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
+                <span class="lane-name">进行中</span>
+                <span class="lane-count">0</span>
+              </header>
+              <p class="lane-note">正在执行</p>
+              <div class="lane-body"></div>
+            </section>
+            <section class="lane" data-lane="blocked">
+              <header>
+                <span class="lane-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="5.8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3.6 13c.5-2.2 2.2-3.4 4.4-3.4s3.9 1.2 4.4 3.4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></span>
+                <span class="lane-name">需要你</span>
+                <span class="lane-count">0</span>
+              </header>
+              <p class="lane-note">等待确认或输入</p>
+              <div class="lane-body"></div>
+            </section>
+            <section class="lane" data-lane="done">
+              <header>
+                <span class="lane-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M5.4 8.2l1.8 1.8 3.5-3.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                <span class="lane-name">已完成</span>
+                <span class="lane-count">0</span>
+              </header>
+              <p class="lane-note">已交付</p>
+              <div class="lane-body"></div>
+            </section>
+          </div>
+
+          <section class="flow-dock" id="flowDock">
+            <header class="flow-head">
+              <div class="flow-title">
+                <h3 id="flowTitle">当前任务</h3>
+                <span class="flow-meta" id="flowMeta"></span>
+              </div>
+              <span class="flow-status" id="flowStatus">—</span>
+              <div class="flow-actions">
+                <button id="flowTerm" class="btn mini" type="button">打开终端</button>
+                <button id="flowReject" class="btn mini" type="button" hidden>打回返工</button>
+                <button id="flowNext" class="btn mini" type="button" hidden>新建任务</button>
+                <button id="flowToggle" class="btn mini primary" type="button">启动流水线</button>
+              </div>
+            </header>
+            <div class="flow-canvas" id="flowCanvas">
+              <div class="flow-empty">点上方卡片选择一个任务，这里会显示它的阶段流程</div>
+            </div>
+            <div class="flow-agents" id="flowAgents"></div>
+          </section>
+        </section>
+      </div>
+    </main>
+
+    <section class="panel" id="panel">
+      <div class="panel-head">
+        <span class="panel-title">工作流</span>
+        <span class="panel-path" id="panelPath"></span>
+        <button id="refreshWf" class="icon-btn" type="button" title="刷新">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.6V5.2h-2.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button id="panelClose" class="icon-btn" type="button" title="收起">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.4 4.4l7.2 7.2M11.6 4.4l-7.2 7.2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div class="wf-bar">
+        <select id="wfSelect" class="wf-select"></select>
+        <span class="wf-meta" id="wfMeta"></span>
+      </div>
+
+      <div class="wf-stats" id="wfStats" hidden></div>
+
+      <div class="wf-graph" id="wfGraph">
+        <div class="wf-empty" id="wfEmpty">
+          <p>还没有 LoopForge 任务</p>
+          <small>在项目里跑 /start-devflow 之后，这里会显示各阶段状态</small>
+        </div>
+      </div>
+
+      <div class="wf-detail" id="wfDetail" hidden></div>
+
+      <div class="wf-foot">
+        <span class="wf-installed" id="wfInstalled"></span>
+        <span class="wf-install-actions">
+          <button id="installClaude" class="btn mini" type="button">装到 Claude Code</button>
+          <button id="installCodex" class="btn mini" type="button">装到 Codex</button>
+        </span>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="modal" id="pipeModal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>新建流水线</h2>
+      <p>填写需求，然后给每个阶段挑一个 CLI。每个阶段独立开一个终端，靠 artifacts 里的交接文件协作；同一阶段被打回时优先复用原终端。</p>
+    </div>
+    <div class="field">
+      <label>项目</label>
+      <div class="pipe-proj" id="pipeProjectLabel"></div>
+    </div>
+    <div class="field">
+      <label for="pipeRequirement">需求</label>
+      <textarea id="pipeRequirement" rows="3" placeholder="例如：给设置页加一个深色模式开关"></textarea>
+    </div>
+    <div class="field">
+      <label>阶段 → CLI</label>
+      <div class="stage-map" id="stageMap"><div class="smap-loading">正在探测本机 CLI…</div></div>
+    </div>
+    <div class="modal-foot">
+      <span class="modal-hint"><kbd>Esc</kbd> 取消</span>
+      <button id="pipeCancel" class="btn ghost" type="button">取消</button>
+      <button id="pipeCreate" class="btn primary" type="button">启动</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="settingsModal" hidden>
+  <div class="modal-card wide">
+    <div class="modal-head">
+      <h2>设置</h2>
+      <p>终端 CLI、工作流面板和整包配色统一在这里管理。</p>
+    </div>
+    <div class="settings-body">
+      <nav class="settings-nav" id="settingsTabs" role="tablist" aria-orientation="vertical">
+        <button class="settings-tab active" type="button" data-tab="cli" role="tab">
+          <span>终端 CLI</span>
+          <small>路径、参数与版本</small>
+        </button>
+        <button class="settings-tab" type="button" data-tab="wf" role="tab">
+          <span>工作流</span>
+          <small>右侧面板开关</small>
+        </button>
+        <button class="settings-tab" type="button" data-tab="look" role="tab">
+          <span>外观</span>
+          <small>整包与终端配色</small>
+        </button>
+        <button class="settings-tab" type="button" data-tab="about" role="tab">
+          <span>关于</span>
+          <small>版本与更新</small>
+        </button>
+      </nav>
+      <div class="settings-content">
+        <div class="settings-pane" id="paneCli">
+          <p class="pane-hint">为每款 CLI 指定可执行文件路径、默认参数，或暂时停用它。路径留空 = 自动探测，参数留空 = 沿用内置参数。</p>
+          <div class="cli-head">
+            <input id="cliSetFilter" type="search" placeholder="搜索 CLI" spellcheck="false" autocomplete="off">
+            <span class="cli-count" id="cliSetCount"></span>
+            <span class="cli-bulk-note" id="cliBulkNote" hidden></span>
+            <button id="cliSetRefresh" class="btn mini ghost" type="button" title="重新探测本机版本和 npm 最新版">刷新版本</button>
+            <button id="cliUpdateAll" class="btn mini primary" type="button" hidden>一键更新</button>
+          </div>
+          <div class="cli-fit-filter" id="cliFitFilter" role="group" aria-label="按阶段筛选 CLI"></div>
+          <div class="cli-settings" id="cliSettingsList"></div>
+          <div class="cli-job" id="cliJob" hidden>
+            <div class="cli-job-head">
+              <span id="cliJobTitle"></span>
+              <button id="cliJobCancel" class="btn mini ghost" type="button">取消</button>
+            </div>
+            <div class="cli-job-log" id="cliJobLog"></div>
+          </div>
+        </div>
+        <div class="settings-pane" id="paneWf" hidden>
+          <div class="set-row">
+            <div class="set-row-text">
+              <b>右侧工作流面板</b>
+              <small>显示 LoopForge 任务的阶段状态和安装入口。</small>
+            </div>
+            <label class="set-switch"><input type="checkbox" id="wfPanelToggle"> 显示</label>
+          </div>
+          <div class="set-row">
+            <div class="set-row-text">
+              <b>打开工作流面板</b>
+              <small>面板用来查看每个任务 6 个阶段的进度和 CLI 分配。</small>
+            </div>
+            <button id="wfPanelOpen" class="btn mini" type="button">打开</button>
+          </div>
+          <p class="pane-hint">面板内容随项目切换自动刷新；关闭后可以从这里重新打开。</p>
+        </div>
+        <div class="settings-pane" id="paneLook" hidden>
+          <div class="look-section">
+            <div class="look-head">
+              <b>软件配色</b>
+              <small>画布、卡片、边框和强调色一起切换，终端内容区不受影响。</small>
+            </div>
+            <div class="theme-group">
+              <span class="theme-group-label">浅色</span>
+              <div class="app-themes" id="appThemesLight"></div>
+            </div>
+            <div class="theme-group">
+              <span class="theme-group-label">夜间</span>
+              <div class="app-themes" id="appThemesDark"></div>
+            </div>
+          </div>
+          <div class="look-section">
+            <div class="look-head">
+              <b>终端配色</b>
+              <small>只改终端内容区，切换后立即应用到所有已打开的终端。</small>
+            </div>
+            <div class="term-themes" id="termThemes"></div>
+          </div>
+        </div>
+        <div class="settings-pane" id="paneAbout" hidden>
+          <div class="about-hero">
+            <div class="about-mark" aria-hidden="true">
+              <svg viewBox="0 0 20 20"><rect x="1.5" y="2.5" width="17" height="15" rx="4" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6 8.2 8.4 10.4 6 12.6M11 12.8h3.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div>
+              <b class="about-name">AgentDeck</b>
+              <span class="about-ver" id="aboutVer">版本 —</span>
+            </div>
+          </div>
+          <div class="about-grid">
+            <div><span>本地服务</span><b id="aboutDaemon">—</b></div>
+            <div><span>桌面外壳</span><b id="aboutShell">浏览器访问</b></div>
+            <div><span>运行平台</span><b id="aboutPlatform">—</b></div>
+            <div><span>发布仓库</span><b id="aboutRepo">—</b></div>
+          </div>
+          <div class="update-box">
+            <div class="update-line">
+              <b id="updateTitle">检查更新</b>
+              <small id="updateMeta">从 GitHub Releases 获取最新版本</small>
+            </div>
+            <div class="update-actions">
+              <button id="updateCheck" class="btn mini" type="button">检查更新</button>
+              <a id="updateDownload" class="btn mini primary" href="#" target="_blank" rel="noreferrer" hidden>下载新版本</a>
+            </div>
+            <pre id="updateNotes" class="update-notes" hidden></pre>
+          </div>
+          <p class="pane-hint">Windows 便携版：先退出 AgentDeck，用新文件替换 <code>AgentDeck-&lt;版本&gt;-portable.exe</code>，再启动。
+            Linux 服务器：替换 <code>agentdeckd</code> 二进制后 <code>systemctl restart agentdeckd</code>，或 <code>docker compose pull</code> 后重建容器。</p>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <span class="modal-hint">修改后自动保存，新开的终端和流水线立即生效</span>
+      <button id="settingsClose" class="btn primary" type="button">完成</button>
+    </div>
+    <div class="rel-scrim" id="relScrim" hidden></div>
+    <aside class="rel-drawer" id="relDrawer" aria-label="CLI 最新版本更新内容" hidden>
+      <div class="rel-head">
+        <div class="rel-heading">
+          <b id="relTitle">最新版本更新内容</b>
+          <small id="relMeta"></small>
+        </div>
+        <button class="icon-btn rel-close" id="relClose" type="button" title="关闭">✕</button>
+      </div>
+      <div class="rel-tools" id="relTools" hidden>
+        <button class="rel-tab active" id="relZhTab" type="button">中文译文</button>
+        <button class="rel-tab" id="relEnTab" type="button">英文原文</button>
+      </div>
+      <div class="rel-body" id="relBody"></div>
+      <div class="rel-foot">
+        <span class="rel-note" id="relNote"></span>
+        <a class="rel-link" id="relLink" target="_blank" rel="noopener" hidden>在 GitHub 查看 →</a>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="modal" id="pkgModal" hidden>
+  <div class="modal-card narrow">
+    <div class="modal-head">
+      <h2>安装 <span id="pkgTitle"></span></h2>
+      <p>填写该 CLI 的 npm 包名，将执行 <code>npm install -g &lt;包名&gt;@latest</code>。</p>
+    </div>
+    <div class="field">
+      <label for="pkgInput">npm 包</label>
+      <input id="pkgInput" type="text" spellcheck="false" autocomplete="off" placeholder="例如 @scope/name">
+    </div>
+    <div class="modal-foot">
+      <span class="modal-hint"><kbd>Esc</kbd> 取消</span>
+      <button id="pkgCancel" class="btn ghost" type="button">取消</button>
+      <button id="pkgOk" class="btn primary" type="button">安装</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="confirmModal" hidden>
+  <div class="modal-card narrow">
+    <div class="modal-head">
+      <h2 id="confirmTitle">确认</h2>
+      <p id="confirmText"></p>
+    </div>
+    <div class="modal-foot">
+      <span class="modal-hint"><kbd>Esc</kbd> 取消</span>
+      <button id="confirmNo" class="btn ghost" type="button">取消</button>
+      <button id="confirmYes" class="btn primary" type="button">确定</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="rejectModal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>打回返工</h2>
+      <p id="rejectSub">把当前阶段退回到上游阶段，原因会写进下一轮的返工提示。</p>
+    </div>
+    <div class="field">
+      <label for="rejectTarget">打回至</label>
+      <select id="rejectTarget" class="wf-select"></select>
+    </div>
+    <div class="field">
+      <label for="rejectReason">原因</label>
+      <textarea id="rejectReason" rows="3" placeholder="例如：方案里缺少接口定义，按 tech-design 补齐后再提交"></textarea>
+    </div>
+    <div class="modal-foot">
+      <span class="modal-hint"><kbd>Esc</kbd> 取消</span>
+      <button id="rejectCancel" class="btn ghost" type="button">取消</button>
+      <button id="rejectOk" class="btn primary" type="button">确认打回</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="authModal" hidden>
+  <div class="modal-card narrow auth-card">
+    <div class="modal-head">
+      <h2>需要访问令牌</h2>
+      <p>这个 AgentDeck 服务对外开放。请输入启动日志里的访问令牌，验证一次后会记住 30 天。</p>
+    </div>
+    <div class="field">
+      <label for="authTokenInput">访问令牌</label>
+      <input id="authTokenInput" type="password" spellcheck="false" autocomplete="off" placeholder="粘贴启动日志中的令牌">
+    </div>
+    <p class="auth-error" id="authError" hidden></p>
+    <div class="modal-foot">
+      <span class="modal-hint">也可以在启动时用 <code>-token</code> 指定</span>
+      <button id="authSubmit" class="btn primary" type="button">进入</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2>新建终端</h2>
+      <p id="modalSub">选择要运行的 CLI。Claude Code 默认以 --dangerously-skip-permissions 启动。</p>
+    </div>
+    <div class="cli-head">
+      <input id="cliFilter" type="search" placeholder="搜索 CLI" spellcheck="false" autocomplete="off">
+      <span class="cli-count" id="cliCount"></span>
+    </div>
+    <div class="cli-grid" id="cliGrid"></div>
+    <div class="field">
+      <label for="cwd">工作目录</label>
+      <div class="row">
+        <input id="cwd" type="text" spellcheck="false">
+        <button id="pickDir" class="btn mini" type="button">浏览</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="custom">或自定义命令</label>
+      <input id="custom" type="text" spellcheck="false" placeholder="例如 claude --dangerously-skip-permissions">
+    </div>
+    <div class="modal-foot">
+      <span class="modal-hint"><kbd>Esc</kbd> 取消</span>
+      <button id="cancel" class="btn ghost" type="button">取消</button>
+      <button id="create" class="btn primary" type="button">启动</button>
+    </div>
+  </div>
+</div>
+
+<script src="vendor/xterm.js"></script>
+<script src="vendor/addon-fit.js"></script>
+<script src="brand-logos.js"></script>
+<script src="avatars.js"></script>
+<script src="app.js"></script>
+<script src="board.js"></script>
+</body>
+</html>

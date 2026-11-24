@@ -1,0 +1,189 @@
+# 发布流水线：打 tag（v0.3.0）后自动构建并发布
+#
+#   git tag v0.3.0 && git push origin v0.3.0
+#
+# 产物：
+#   • AgentDeck-<ver>-portable.exe            Windows 免安装版（应用内「检查更新」读这个）
+#   • agentdeckd-<ver>-linux-amd64.tar.gz     Linux 服务器（systemd 安装脚本）
+#   • agentdeckd-<ver>-linux-arm64.tar.gz     ARM 服务器（云厂商 ARM 实例）
+#   • ghcr.io/<owner>/agentdeckd:<ver>        Docker 镜像（amd64 + arm64）
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（不带 v，例如 0.3.1）'
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # 创建 Release
+  packages: write   # 推送 GHCR 镜像
+
+jobs:
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        shell: bash
+        env:
+          RAW_VERSION: ${{ inputs.version || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${RAW_VERSION#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
+            echo "版本号不合法：$version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  desktop-windows:
+    needs: resolve-version
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agentdeckd/go.mod
+          cache-dependency-path: agentdeckd/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: agentdeck/package-lock.json
+
+      - name: 校验版本号与 version.go 一致
+        run: |
+          set -euo pipefail
+          want='${{ needs.resolve-version.outputs.version }}'
+          have=$(sed -n 's/.*var version = "\([^"]*\)".*/\1/p' agentdeckd/version.go | head -n1)
+          if [ "$want" != "$have" ]; then
+            echo "version.go 是 $have，tag/输入是 $want；先改 version.go 再发版" >&2
+            exit 1
+          fi
+
+      - name: 构建 daemon（Windows）
+        working-directory: agentdeckd
+        run: |
+          go build -trimpath -ldflags "-s -w -X main.version=${{ needs.resolve-version.outputs.version }}" -o agentdeckd.exe .
+
+      - name: 安装依赖并打包便携版
+        working-directory: agentdeck
+        run: |
+          npm ci
+          npm pkg set version=${{ needs.resolve-version.outputs.version }}
+          npm run dist
+
+      - name: 收集 exe
+        run: |
+          mkdir -p out
+          cp agentdeck/dist/AgentDeck-*-portable.exe out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/*.exe
+          if-no-files-found: error
+
+  daemon-linux:
+    needs: resolve-version
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agentdeckd/go.mod
+          cache-dependency-path: agentdeckd/go.sum
+
+      - name: 构建 daemon（linux/${{ matrix.arch }}）
+        working-directory: agentdeckd
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          go build -trimpath -ldflags "-s -w -X main.version=${{ needs.resolve-version.outputs.version }}" -o agentdeckd .
+
+      - name: 打包 tar.gz
+        run: |
+          set -euo pipefail
+          ver='${{ needs.resolve-version.outputs.version }}'
+          arch='${{ matrix.arch }}'
+          pkg="agentdeckd-${ver}-linux-${arch}"
+          mkdir -p "out/$pkg"
+          cp agentdeckd/agentdeckd "out/$pkg/"
+          cp -r agentdeckd/deploy "out/$pkg/deploy"
+          cp agentdeckd/README.md "out/$pkg/README.md"
+          chmod +x "out/$pkg/agentdeckd" "out/$pkg/deploy/install.sh"
+          tar -C out -czf "out/$pkg.tar.gz" "$pkg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: out/*.tar.gz
+          if-no-files-found: error
+
+  docker:
+    needs: resolve-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: agentdeckd
+          file: agentdeckd/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ needs.resolve-version.outputs.version }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/agentdeckd:${{ needs.resolve-version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/agentdeckd:latest
+
+  release:
+    needs: [resolve-version, desktop-windows, daemon-linux, docker]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: 生成校验和
+        run: |
+          cd out
+          ls -la
+          sha256sum *.exe *.tar.gz > SHA256SUMS
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.resolve-version.outputs.version }}
+          name: AgentDeck v${{ needs.resolve-version.outputs.version }}
+          generate_release_notes: true
+          files: |
+            out/*.exe
+            out/*.tar.gz
+            out/SHA256SUMS
+          fail_on_unmatched_files: true

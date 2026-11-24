@@ -1,0 +1,25 @@
+# 本仓库只跟踪 AgentDeck 的两个子项目；E:\googledown 下其它本地目录一律不进仓库。
+/*
+!/.gitignore
+!/.gitattributes
+!/.github/
+!/README.md
+!/RELEASE.md
+!/LICENSE
+!/agentdeck/
+!/agentdeckd/
+
+# —— agentdeck（Electron 外壳）——
+/agentdeck/node_modules/
+/agentdeck/dist/
+/agentdeck/out/
+/agentdeck/*.log
+
+# —— agentdeckd（Go daemon）——
+/agentdeckd/agentdeckd
+/agentdeckd/agentdeckd.exe
+/agentdeckd/agentdeckd.exe~
+/agentdeckd/*.log
+/agentdeckd/%TEMP%/
+/agentdeckd/.playwright-mcp/
+/agentdeckd/data/

@@ -1,0 +1,1082 @@
+[
+  {
+    "id": "agy",
+    "name": "Agy",
+    "bin": "agy",
+    "altBins": [
+      "agy.cmd",
+      "agy.exe"
+    ],
+    "args": [
+      "--dangerously-skip-permissions"
+    ],
+    "prompt": "positional",
+    "promptArg": "--prompt-interactive",
+    "note": "bypass 模式追加 --dangerously-skip-permissions，accept/auto 用 --mode <mode>；prompt 通过 --prompt-interactive 在命令内传入。",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 2,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "公开资料很少，按通用 agent 计"
+  },
+  {
+    "id": "aider",
+    "name": "Aider",
+    "bin": "aider",
+    "altBins": [
+      "aider.exe",
+      "aider.cmd"
+    ],
+    "args": [
+      "--no-check-update",
+      "--yes-always"
+    ],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "固定参数为 AO 通知回调等；--yes-always 只在 accept/auto/bypass 模式追加，初始 prompt 启动后注入终端。",
+    "repo": "Aider-AI/aider",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 3,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 2
+    },
+    "fitNote": "git 原生自动提交 + repo map + architect 模式，小步重构最顺手"
+  },
+  {
+    "id": "amp",
+    "name": "Amp",
+    "bin": "amp",
+    "altBins": [
+      "amp.cmd",
+      "amp.exe"
+    ],
+    "args": [],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "仅按配置追加 --mode；初始任务启动后注入交互 TUI，避免 execute 模式转录。",
+    "stages": {
+      "TASK-01": 3,
+      "TASK-02": 4,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 3
+    },
+    "fitNote": "代码库检索强、可让第二个模型做 Oracle 审查，自主性高"
+  },
+  {
+    "id": "auggie",
+    "name": "Auggie",
+    "bin": "auggie",
+    "altBins": [
+      "auggie.cmd",
+      "auggie.exe"
+    ],
+    "args": [
+      "--print"
+    ],
+    "prompt": "positional",
+    "promptArg": "--",
+    "note": "--print 为无头一次性模式，prompt 以 -- <prompt> 位置参数传入。",
+    "stages": {
+      "TASK-01": 4,
+      "TASK-02": 4,
+      "TASK-03": 4,
+      "CODE-REVIEW": 4,
+      "TASK-04": 3,
+      "TASK-05": 3
+    },
+    "fitNote": "超长上下文索引大型仓库，需求梳理、方案与审查都均衡"
+  },
+  {
+    "id": "autohand",
+    "name": "Autohand",
+    "bin": "autohand",
+    "altBins": [
+      "autohand.cmd",
+      "autohand.exe"
+    ],
+    "args": [
+      "--unrestricted"
+    ],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "--unrestricted 用于 auto/bypass，accept 用 --yes；prompt 启动后注入交互终端。",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 2,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "资料较少，按通用 agent 计"
+  },
+  {
+    "id": "claude-code",
+    "name": "Claude Code",
+    "bin": "claude",
+    "npm": "@anthropic-ai/claude-code",
+    "altBins": [
+      "claude.exe",
+      "claude.cmd"
+    ],
+    "args": [
+      "--dangerously-skip-permissions"
+    ],
+    "prompt": "positional",
+    "promptArg": "--",
+    "note": "bypass 模式追加 --permission-mode bypassPermissions；交互 TUI，prompt 以 -- <prompt> 传入，目录信任通过预写 ~/.claude.json 完成。",
+    "repo": "anthropics/claude-code",
+    "stages": {
+      "TASK-01": 4,
+      "TASK-02": 5,
+      "TASK-03": 5,
+      "CODE-REVIEW": 4,
+      "TASK-04": 5,
+      "TASK-05": 4
+    },
+    "fitNote": "多文件改造、边界情况与测试执行最稳，会主动补测试"
+  },
+  {
+    "id": "cline",
+    "name": "Cline",
+    "bin": "cline",
+    "altBins": [
+      "cline.cmd",
+      "cline.exe"
+    ],
+    "args": [
+      "--yolo"
+    ],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "--yolo 仅 bypass，accept/auto 用 --auto-approve true；prompt 启动后注入，避免 argv 触发一次性执行。",
+    "repo": "cline/cline",
+    "stages": {
+      "TASK-01": 3,
+      "TASK-02": 4,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 2
+    },
+    "fitNote": "Plan/Act 双模式 + MCP + 浏览器自动化，方案与开发顺手"
+  },
+  {
+    "id": "codewhale",
+    "name": "Codewhale",
+    "bin": "codewhale",
+    "altBins": [
+      "codew",
+      "codewhale.exe",
+      "codewhale.cmd",
+      "codew.exe",
+      "codew.cmd"
+    ],
+    "args": [
+      "--skip-onboarding",
+      "--approval-policy",
+      "on-request",
+      "--fresh"
+    ],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "default/accept 用 --approval-policy on-request，auto 用 auto，bypass 用 --yolo；--prompt 一次即退出，故 prompt 启动后注入。",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 2,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "资料较少，按通用 agent 计"
+  },
+  {
+    "id": "codex",
+    "name": "Codex",
+    "bin": "codex",
+    "npm": "@openai/codex",
+    "altBins": [
+      "codex.cmd",
+      "codex.exe"
+    ],
+    "args": [
+      "-c",
+      "check_for_update_on_startup=false",
+      "-c",
+      "notice.hide_rate_limit_model_nudge=true",
+      "--dangerously-bypass-approvals-and-sandbox",
+      "--dangerously-bypass-hook-trust"
+    ],
+    "prompt": "positional",
+    "promptArg": "--",
+    "note": "默认与 bypass 模式都追加 --dangerously-bypass-approvals-and-sandbox；accept/auto 改用 --ask-for-approval，prompt 以 -- <prompt> 传入。",
+    "repo": "openai/codex",
+    "stages": {
+      "TASK-01": 3,
+      "TASK-02": 4,
+      "TASK-03": 4,
+      "CODE-REVIEW": 5,
+      "TASK-04": 4,
+      "TASK-05": 3
+    },
+    "fitNote": "公认审查最强、PR/CI 原生；大重构容易偏离既有约定"
+  },
+  {
+    "id": "command-code",
+    "name": "Command Code",
+    "bin": "command-code",
+    "altBins": [
+      "command-code.cmd",
+      "command-code.exe"
+    ],
+    "args": [
+      "--skip-onboarding",
+      "--no-auto-update",
+      "--trust",
+      "--yolo"
+    ],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "实际主命令为 cmd/command-code，Windows 常见 cmdc；--yolo 仅 bypass；prompt 启动后注入。",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 2,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "资料较少，按通用 agent 计"
+  },
+  {
+    "id": "continue",
+    "name": "Continue",
+    "bin": "cn",
+    "altBins": [
+      "cn.cmd",
+      "cn.exe"
+    ],
+    "args": [
+      "--auto"
+    ],
+    "prompt": "positional",
+    "promptArg": "--",
+    "note": "--auto 用于 auto/bypass；prompt 非空时以 -- <prompt> 在命令内传入，否则交互启动。",
+    "repo": "continuedev/continue",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 3,
+      "TASK-03": 3,
+      "CODE-REVIEW": 4,
+      "TASK-04": 3,
+      "TASK-05": 2
+    },
+    "fitNote": "可把团队检查规则固化成审查流程"
+  },
+  {
+    "id": "copilot",
+    "name": "GitHub Copilot",
+    "bin": "copilot",
+    "altBins": [
+      "copilot.cmd",
+      "copilot.exe"
+    ],
+    "args": [
+      "--no-auto-update"
+    ],
+    "prompt": "positional",
+    "promptArg": "--interactive",
+    "note": "bypass 用 --allow-all，auto 用 --allow-all-tools；prompt 通过 --interactive 在命令内传入并保持会话存活。",
+    "repo": "github/copilot-cli",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 3,
+      "TASK-03": 3,
+      "CODE-REVIEW": 4,
+      "TASK-04": 3,
+      "TASK-05": 2
+    },
+    "fitNote": "GitHub PR / CI 原生，审查和流水线衔接最省事"
+  },
+  {
+    "id": "crush",
+    "name": "Crush",
+    "bin": "crush",
+    "altBins": [
+      "crush.cmd",
+      "crush.exe"
+    ],
+    "args": [
+      "--yolo"
+    ],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "--yolo 仅 bypass；有任务时 prompt 在交互 UI 启动后注入。",
+    "repo": "charmbracelet/crush",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 3,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "终端体验好、LSP 感知，适合日常改码"
+  },
+  {
+    "id": "cursor",
+    "name": "Cursor",
+    "bin": "cursor-agent",
+    "altBins": [
+      "cursor-agent.exe",
+      "cursor-agent.cmd"
+    ],
+    "args": [
+      "--yolo"
+    ],
+    "prompt": "positional",
+    "promptArg": "--",
+    "note": "auto 用 --force，bypass 用 --yolo；prompt 位置参数必须放最后，以 -- <prompt> 传入。",
+    "stages": {
+      "TASK-01": 3,
+      "TASK-02": 3,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 2
+    },
+    "fitNote": "编辑器上下文快、改码顺滑，深度方案与审查一般"
+  },
+  {
+    "id": "deepseek-harness",
+    "name": "DeepSeek",
+    "bin": "dsh",
+    "npm": "@deepseek-ai/dsh",
+    "altBins": [
+      "dsh.cmd",
+      "dsh.exe"
+    ],
+    "args": [
+      "--profile",
+      "headless"
+    ],
+    "prompt": "positional",
+    "promptArg": "",
+    "note": "无头一次性任务模式，task 作为单个位置参数；无模型/权限/工作区参数。",
+    "stages": {
+      "TASK-01": 3,
+      "TASK-02": 4,
+      "TASK-03": 5,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 3
+    },
+    "fitNote": "SWE-bench 高分且便宜，无头任务模式适合批量开发"
+  },
+  {
+    "id": "devin",
+    "name": "Devin",
+    "bin": "devin",
+    "altBins": [
+      "devin.cmd",
+      "devin.exe"
+    ],
+    "args": [
+      "--permission-mode",
+      "dangerous"
+    ],
+    "prompt": "positional",
+    "promptArg": "--",
+    "note": "bypass 用 --permission-mode dangerous，accept/auto 分别为 accept-edits/auto；prompt 以 -- <prompt> 传入，避免无头 -p。",
+    "stages": {
+      "TASK-01": 3,
+      "TASK-02": 3,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 4,
+      "TASK-05": 3
+    },
+    "fitNote": "长时自主执行、以 PR 交付，测试和联调能自己跑"
+  },
+  {
+    "id": "docker-agent",
+    "name": "Docker Agent",
+    "bin": "docker-agent",
+    "altBins": [
+      "docker-agent.exe"
+    ],
+    "args": [],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "仅支持 Chat 模式，没有可用的终端启动命令。",
+    "stages": {
+      "TASK-01": 0,
+      "TASK-02": 0,
+      "TASK-03": 0,
+      "CODE-REVIEW": 0,
+      "TASK-04": 0,
+      "TASK-05": 0
+    },
+    "fitNote": "仅支持 Chat，没有可用的终端启动命令"
+  },
+  {
+    "id": "droid",
+    "name": "Droid",
+    "bin": "droid",
+    "altBins": [
+      "droid.cmd",
+      "droid.exe"
+    ],
+    "args": [],
+    "prompt": "positional",
+    "promptArg": "",
+    "note": "交互 TUI 无权限参数，权限经 --settings <运行时会话 JSON> 的 autonomyLevel 传递；prompt 直接作为位置参数。",
+    "stages": {
+      "TASK-01": 3,
+      "TASK-02": 4,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 4,
+      "TASK-05": 3
+    },
+    "fitNote": "结构化计划 + 验证输出（测试/PR），自主完成度高"
+  },
+  {
+    "id": "fx",
+    "name": "fx",
+    "bin": "fx",
+    "altBins": [],
+    "args": [],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "该 CLI 不支持 Windows。",
+    "stages": {
+      "TASK-01": 0,
+      "TASK-02": 0,
+      "TASK-03": 0,
+      "CODE-REVIEW": 0,
+      "TASK-04": 0,
+      "TASK-05": 0
+    },
+    "fitNote": "该 CLI 不支持 Windows"
+  },
+  {
+    "id": "gemini",
+    "name": "Gemini CLI",
+    "bin": "gemini",
+    "npm": "@google/gemini-cli",
+    "altBins": [
+      "gemini.cmd",
+      "gemini.exe"
+    ],
+    "args": [
+      "--skip-trust",
+      "--approval-mode",
+      "yolo"
+    ],
+    "prompt": "positional",
+    "promptArg": "--prompt-interactive",
+    "note": "始终传 --skip-trust；accept/auto 用 --approval-mode auto_edit，bypass 用 yolo；prompt 在命令内传入。",
+    "repo": "google-gemini/gemini-cli",
+    "stages": {
+      "TASK-01": 5,
+      "TASK-02": 4,
+      "TASK-03": 3,
+      "CODE-REVIEW": 4,
+      "TASK-04": 3,
+      "TASK-05": 5
+    },
+    "fitNote": "百万级上下文，适合整仓/整份需求做梳理与沉淀；大重构偏弱"
+  },
+  {
+    "id": "goose",
+    "name": "Goose",
+    "bin": "goose",
+    "altBins": [
+      "goose.exe"
+    ],
+    "args": [
+      "session"
+    ],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "权限只用 env GOOSE_MODE（bypass/auto→auto，accept→smart_approve）；-t 空串加 --interactive 保持输入就绪，prompt 启动后注入。",
+    "repo": "block/goose",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 3,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 3,
+      "TASK-05": 2
+    },
+    "fitNote": "CLI + 桌面自动化扩展，适合脚本化操作与验证"
+  },
+  {
+    "id": "grok",
+    "name": "Grok Build",
+    "bin": "grok",
+    "altBins": [
+      "grok.cmd",
+      "grok.exe"
+    ],
+    "args": [
+      "--no-auto-update"
+    ],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "bypass 用 --permission-mode bypassPermissions；初始任务启动后注入，避免 -p/--single 无头模式及裸位置参数被当命令。",
+    "stages": {
+      "TASK-01": 3,
+      "TASK-02": 4,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 3
+    },
+    "fitNote": "推理快、基准成绩靠前，方案与开发均衡"
+  },
+  {
+    "id": "hermes",
+    "name": "Hermes Agent",
+    "bin": "hermes",
+    "altBins": [
+      "hermes.exe",
+      "hermes.cmd"
+    ],
+    "args": [
+      "chat"
+    ],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "bypass 用 --yolo；prompt 先写入 initial-query.txt 再由 --query-file 传入；--in/--continue 属工作区与会话参数未列出。",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 3,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "工具调用型 agent，通用能力"
+  },
+  {
+    "id": "kilocode",
+    "name": "Kilo Code",
+    "bin": "kilo",
+    "altBins": [
+      "kilocode",
+      "kilo.cmd",
+      "kilo.exe",
+      "kilocode.cmd",
+      "kilocode.exe"
+    ],
+    "args": [],
+    "prompt": "positional",
+    "promptArg": "--prompt",
+    "note": "权限经 env KILO_CONFIG_CONTENT 权限映射传递（bypass 为 * allow）；交互 TUI 无权限 flag；prompt 用 --prompt 传入。",
+    "repo": "Kilo-Org/kilocode",
+    "stages": {
+      "TASK-01": 3,
+      "TASK-02": 4,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 2
+    },
+    "fitNote": "Cline 系，Architect/Code/Debug 分工，方案与开发顺手"
+  },
+  {
+    "id": "kimchi",
+    "name": "Kimchi",
+    "bin": "kimchi",
+    "altBins": [
+      "kimchi.cmd",
+      "kimchi.exe"
+    ],
+    "args": [
+      "--yolo"
+    ],
+    "prompt": "positional",
+    "promptArg": "",
+    "note": "accept/auto 用 --auto，bypass 用 --yolo；交互 TUI 需 TTY（tmux 提供），prompt 为尾随位置参数。",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 2,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "资料较少，按通用 agent 计"
+  },
+  {
+    "id": "kimi",
+    "name": "Kimi",
+    "bin": "kimi",
+    "npm": "@moonshot-ai/kimi-code",
+    "altBins": [
+      "kimi.cmd",
+      "kimi.exe"
+    ],
+    "args": [
+      "-y"
+    ],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "accept/auto 用 --auto，bypass 用 -y；prompt 启动后注入，避免 -p/--prompt 进入无头模式。",
+    "repo": "MoonshotAI/kimi-cli",
+    "stages": {
+      "TASK-01": 4,
+      "TASK-02": 4,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 5
+    },
+    "fitNote": "超长上下文 + 中文文档强，需求、方案、沉淀都省心"
+  },
+  {
+    "id": "kiro",
+    "name": "Kiro",
+    "bin": "kiro-cli",
+    "altBins": [
+      "kiro-cli.cmd",
+      "kiro-cli.exe"
+    ],
+    "args": [
+      "chat",
+      "--trust-all-tools"
+    ],
+    "prompt": "positional",
+    "promptArg": "--",
+    "note": "bypass/auto 用 --trust-all-tools，accept 用 --trust-tools=fs_read,fs_write；仅 orchestrator 的 prompt 以 -- <prompt> 在命令内传入，worker 启动后注入。",
+    "stages": {
+      "TASK-01": 5,
+      "TASK-02": 5,
+      "TASK-03": 3,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 3
+    },
+    "fitNote": "规格驱动（需求→设计→任务）原生，需求与方案最顺"
+  },
+  {
+    "id": "mastra-code",
+    "name": "Mastra Code",
+    "bin": "mastracode",
+    "altBins": [
+      "mastracode.cmd",
+      "mastracode.exe"
+    ],
+    "args": [],
+    "prompt": "positional",
+    "promptArg": "--tui-initial-prompt",
+    "note": "无权限或绕过参数；prompt 通过 --tui-initial-prompt 在命令内传入。",
+    "repo": "mastra-ai/mastra",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 3,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "Mastra 框架配套 CLI，通用能力"
+  },
+  {
+    "id": "memcode",
+    "name": "memcode",
+    "bin": "memcode",
+    "altBins": [
+      "memcode.exe"
+    ],
+    "args": [
+      "run"
+    ],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "auto 用 --auto，bypass 用 --allow-all，default 用 --ask，不支持 accept-edits；prompt 启动后注入。",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 2,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "资料较少，按通用 agent 计"
+  },
+  {
+    "id": "mimo-code",
+    "name": "MiMo Code",
+    "bin": "mimo",
+    "npm": "@mimo-ai/cli",
+    "altBins": [
+      "mimo.cmd",
+      "mimo.exe"
+    ],
+    "args": [
+      "--trust"
+    ],
+    "prompt": "positional",
+    "promptArg": "--prompt",
+    "note": "权限与系统提示通过生成的 --agent 配置承载，无独立绕过 flag；prompt 用 --prompt 在命令内传入。",
+    "stages": {
+      "TASK-01": 3,
+      "TASK-02": 3,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 3
+    },
+    "fitNote": "小米 MiMo 模型，编码基准靠前"
+  },
+  {
+    "id": "minimax-code",
+    "name": "MiniMax Code",
+    "bin": "mcode",
+    "altBins": [
+      "mcode.cmd",
+      "mcode.exe"
+    ],
+    "args": [],
+    "prompt": "positional",
+    "promptArg": "--",
+    "note": "无权限 flag（权限走 profile）；prompt 以 -- <prompt> 位置参数传入。",
+    "stages": {
+      "TASK-01": 3,
+      "TASK-02": 3,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 3
+    },
+    "fitNote": "MiniMax M 系列性价比高，批量开发划算"
+  },
+  {
+    "id": "muse",
+    "name": "Muse Code",
+    "bin": "muse",
+    "altBins": [
+      "muse.exe",
+      "muse.cmd"
+    ],
+    "args": [
+      "--trust-workspace",
+      "--yolo"
+    ],
+    "prompt": "positional",
+    "promptArg": "",
+    "note": "accept/auto 用 --approval-mode never，bypass 用 --yolo；prompt 为尾随位置参数，刻意不用无头的 muse exec。",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 2,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "资料较少，按通用 agent 计"
+  },
+  {
+    "id": "omp",
+    "name": "OMP",
+    "bin": "omp",
+    "altBins": [
+      "omp.cmd",
+      "omp.exe"
+    ],
+    "args": [],
+    "prompt": "positional",
+    "promptArg": "",
+    "note": "无权限参数；prompt 为尾随位置参数。",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 2,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "资料较少，按通用 agent 计"
+  },
+  {
+    "id": "opencode",
+    "name": "opencode",
+    "bin": "opencode",
+    "npm": "opencode-ai",
+    "altBins": [
+      "opencode.cmd",
+      "opencode.exe"
+    ],
+    "args": [
+      "--dangerously-skip-permissions"
+    ],
+    "prompt": "positional",
+    "promptArg": "--prompt",
+    "note": "v1 适配器：auto 用 --auto，bypass 用 --dangerously-skip-permissions；prompt 用 --prompt 在命令内传入。",
+    "repo": "sst/opencode",
+    "stages": {
+      "TASK-01": 3,
+      "TASK-02": 3,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 2
+    },
+    "fitNote": "模型无关的终端 harness，换模型方便，适合开发"
+  },
+  {
+    "id": "opencode-v2",
+    "name": "OpenCode 2",
+    "bin": "opencode",
+    "altBins": [
+      "opencode.cmd",
+      "opencode.exe"
+    ],
+    "args": [
+      "--standalone",
+      "--dangerously-skip-permissions"
+    ],
+    "prompt": "positional",
+    "promptArg": "--prompt=",
+    "note": "v2：auto 用 --auto，bypass 用 --dangerously-skip-permissions；prompt 用 --prompt= 传入。",
+    "repo": "sst/opencode",
+    "stages": {
+      "TASK-01": 3,
+      "TASK-02": 3,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 2
+    },
+    "fitNote": "同 opencode，v2 适配层"
+  },
+  {
+    "id": "openhands",
+    "name": "OpenHands",
+    "bin": "openhands",
+    "altBins": [
+      "openhands.exe"
+    ],
+    "args": [
+      "--always-approve"
+    ],
+    "prompt": "positional",
+    "promptArg": "--task=",
+    "note": "auto 用 --llm-approve，bypass 用 --always-approve；prompt 通过 --task= 在命令内传入。",
+    "repo": "All-Hands-AI/OpenHands",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 3,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 5,
+      "TASK-05": 2
+    },
+    "fitNote": "沙箱里自主跑测试、提 PR，测试环节最强"
+  },
+  {
+    "id": "open-interpreter",
+    "name": "Open Interpreter",
+    "bin": "interpreter",
+    "altBins": [
+      "interpreter.exe"
+    ],
+    "args": [
+      "--no-daemon"
+    ],
+    "prompt": "positional",
+    "promptArg": "--",
+    "note": "bypass 用 --dangerously-bypass-approvals-and-sandbox，auto 用 --approve-for-me；prompt 以 -- <prompt> 传入。",
+    "repo": "OpenInterpreter/open-interpreter",
+    "stages": {
+      "TASK-01": 1,
+      "TASK-02": 2,
+      "TASK-03": 2,
+      "CODE-REVIEW": 2,
+      "TASK-04": 3,
+      "TASK-05": 2
+    },
+    "fitNote": "自然语言即执行，适合临时验证脚本"
+  },
+  {
+    "id": "pi",
+    "name": "Pi",
+    "bin": "pi",
+    "npm": "@earendil-works/pi-coding-agent",
+    "update": [
+      "update"
+    ],
+    "altBins": [
+      "pi.cmd",
+      "pi.exe"
+    ],
+    "args": [],
+    "prompt": "positional",
+    "promptArg": "",
+    "note": "无权限参数；prompt 作为尾随位置参数在命令内传入。",
+    "repo": "badlogic/pi-mono",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 3,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "轻量快速，小任务够用"
+  },
+  {
+    "id": "prime-agent",
+    "name": "Prime Agent",
+    "bin": "prime-agent",
+    "altBins": [
+      "prime-agent.cmd",
+      "prime-agent.exe"
+    ],
+    "args": [],
+    "prompt": "positional",
+    "promptArg": "--",
+    "note": "无权限 flag；prompt 以 -- <prompt> 位置参数传入。",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 2,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "资料较少，按通用 agent 计"
+  },
+  {
+    "id": "qwen",
+    "name": "Qwen Code",
+    "bin": "qwen",
+    "npm": "@qwen-code/qwen-code",
+    "altBins": [
+      "qwen.cmd",
+      "qwen.exe"
+    ],
+    "args": [
+      "--approval-mode",
+      "yolo"
+    ],
+    "prompt": "positional",
+    "promptArg": "-i",
+    "note": "accept 用 auto-edit，auto 用 auto，bypass 用 yolo；worker 在 Windows 用 -i，Unix 走 remote-input 包装，非 worker 用 -p。",
+    "repo": "QwenLM/qwen-code",
+    "stages": {
+      "TASK-01": 4,
+      "TASK-02": 4,
+      "TASK-03": 4,
+      "CODE-REVIEW": 3,
+      "TASK-04": 3,
+      "TASK-05": 5
+    },
+    "fitNote": "百万上下文 + 中文强，需求/方案/沉淀与开发都稳"
+  },
+  {
+    "id": "stakpak",
+    "name": "Stakpak",
+    "bin": "stakpak",
+    "altBins": [
+      "stakpak.exe"
+    ],
+    "args": [],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "交互 TUI 忽略位置 prompt 且无权限 flag；初始任务启动后经终端注入。",
+    "repo": "stakpak/agent",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 3,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 3,
+      "TASK-05": 2
+    },
+    "fitNote": "偏基础设施与安全护栏，运维验证顺手"
+  },
+  {
+    "id": "tau",
+    "name": "Tau",
+    "bin": "tau",
+    "altBins": [
+      "tau.exe",
+      "tau.cmd"
+    ],
+    "args": [
+      "--approve"
+    ],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "无工具审批策略或权限 flag；--approve 只用于信任 AGENTS.md；为避免位置任务被当作子命令，prompt 启动后注入。",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 2,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "资料较少，按通用 agent 计"
+  },
+  {
+    "id": "unreal-agent",
+    "name": "Unreal Agent",
+    "bin": "",
+    "altBins": [],
+    "args": [],
+    "prompt": "after-start",
+    "promptArg": "",
+    "note": "仅支持 Chat 模式，没有可用的终端启动命令。",
+    "stages": {
+      "TASK-01": 0,
+      "TASK-02": 0,
+      "TASK-03": 0,
+      "CODE-REVIEW": 0,
+      "TASK-04": 0,
+      "TASK-05": 0
+    },
+    "fitNote": "仅支持 Chat，没有可用的终端启动命令"
+  },
+  {
+    "id": "vibe",
+    "name": "Mistral Vibe",
+    "bin": "vibe",
+    "altBins": [
+      "vibe.exe",
+      "vibe.cmd"
+    ],
+    "args": [
+      "--trust",
+      "--agent",
+      "auto-approve"
+    ],
+    "prompt": "positional",
+    "promptArg": "--",
+    "note": "accept 用 --agent accept-edits，auto/bypass 用 --agent auto-approve（自定义 agent 场景改用 --auto-approve）；prompt 以 -- <prompt> 传入。",
+    "repo": "mistralai/mistral-vibe",
+    "stages": {
+      "TASK-01": 2,
+      "TASK-02": 3,
+      "TASK-03": 3,
+      "CODE-REVIEW": 2,
+      "TASK-04": 2,
+      "TASK-05": 2
+    },
+    "fitNote": "Mistral 官方 CLI，通用开发"
+  }
+]

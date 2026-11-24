@@ -1,0 +1,40 @@
+{
+  "name": "agentdeck",
+  "version": "0.3.0",
+  "description": "AgentDeck 桌面外壳（Go daemon + Electron）",
+  "main": "main.js",
+  "author": "agentdeck",
+  "license": "MIT",
+  "repository": "https://github.com/yjjqiu/agentloop",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "app.agentdeck.desktop",
+    "productName": "AgentDeck",
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../agentdeckd/agentdeckd.exe",
+        "to": "agentdeckd.exe"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.png",
+      "target": ["portable"]
+    },
+    "portable": {
+      "artifactName": "AgentDeck-${version}-portable.exe"
+    }
+  }
+}

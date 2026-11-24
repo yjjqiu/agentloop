@@ -1,0 +1,28 @@
+[Unit]
+Description=AgentDeck daemon（多 Agent 工作台，浏览器访问）
+Documentation=https://github.com/yjjqiu/agentloop
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentdeck
+Group=agentdeck
+WorkingDirectory=/opt/agentdeck
+# 令牌、仓库、PATH 都放这里，权限 0600；没有这个文件也能启动（会读 /var/lib 下的配置）。
+EnvironmentFile=-/etc/agentdeck/agentdeck.env
+ExecStart=/opt/agentdeck/agentdeckd -addr 0.0.0.0:3210 -data /var/lib/agentdeck
+Restart=always
+RestartSec=3
+# PTY 会话和子进程较多，给足文件句柄。
+LimitNOFILE=65536
+# 终端里常用的信号要能透传
+KillMode=mixed
+TimeoutStopSec=20
+
+# 只做不会挡住编码的加固：Agent 需要在项目目录里自由读写，所以不开 ProtectSystem/ProtectHome。
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

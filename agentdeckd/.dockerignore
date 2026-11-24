@@ -1,0 +1,7 @@
+agentdeckd.exe
+agentdeckd.exe~
+agentdeckd
+*.log
+%TEMP%
+.git
+deploy
