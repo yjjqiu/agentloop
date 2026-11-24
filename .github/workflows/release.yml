@@ -92,7 +92,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: windows
+          name: agentdeck-windows
           path: out/*.exe
           if-no-files-found: error
 
@@ -134,7 +134,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-${{ matrix.arch }}
+          name: agentdeck-linux-${{ matrix.arch }}
           path: out/*.tar.gz
           if-no-files-found: error
 
@@ -151,6 +151,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
+        env:
+          # buildx 默认会把构建记录上传成隐藏 artifact（xxx.dockerbuild），
+          # 发布 job 下载时容易超时失败；镜像本身不依赖它。
+          DOCKER_BUILD_RECORD_UPLOAD: 'false'
         with:
           context: agentdeckd
           file: agentdeckd/Dockerfile
@@ -168,6 +172,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          # 只取自己上传的产物；docker job 的 buildx 缓存 artifact 不参与发布。
+          pattern: agentdeck-*
           path: out
           merge-multiple: true
 
