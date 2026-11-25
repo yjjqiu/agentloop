@@ -154,3 +154,9 @@ func npmGlobalRoot() string {
 	}
 	return ""
 }
+
+// npmBinDir 把 npm 全局 node_modules 目录换算成全局可执行文件目录。
+// POSIX 下 node_modules 在 <prefix>/lib/node_modules，可执行文件在 <prefix>/bin，差两级。
+func npmBinDir(root string) string {
+	return filepath.Clean(filepath.Join(filepath.Dir(root), "..", "bin"))
+}

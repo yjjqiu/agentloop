@@ -153,3 +153,9 @@ func npmGlobalRoot() string {
 	}
 	return ""
 }
+
+// npmBinDir 把 npm 全局 node_modules 目录换算成全局可执行文件目录。
+// Windows 下可执行文件和 node_modules 同级（%APPDATA%\npm）。
+func npmBinDir(root string) string {
+	return filepath.Dir(root)
+}

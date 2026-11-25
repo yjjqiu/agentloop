@@ -64,12 +64,13 @@ func (c *VersionChecker) PackageFor(bin string) (string, bool) {
 }
 
 // IsNpmManaged 判断二进制是否来自 npm 全局安装；自管理安装的 CLI（如 pi 的 ~/.pi）用 npm 更新不会生效。
+// 注意：可执行文件目录与 node_modules 目录的层级关系分平台不同，见 npmBinDir。
 func (c *VersionChecker) IsNpmManaged(path string) bool {
 	root := npmGlobalRoot()
 	if path == "" || root == "" {
 		return false
 	}
-	binDir := strings.ToLower(filepath.Dir(root))
+	binDir := strings.ToLower(npmBinDir(root))
 	return strings.HasPrefix(strings.ToLower(filepath.Clean(path)), binDir+string(filepath.Separator))
 }
 
