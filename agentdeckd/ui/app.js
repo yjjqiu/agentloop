@@ -1721,6 +1721,7 @@ function cliSetRow(cli) {
     </div>
     <div class="cli-set-grid">
       <label class="wide"><span>路径</span><input class="set-path" spellcheck="false"></label>
+      <label class="wide cli-mode-label" hidden><span>启动模式</span><select class="set-mode"></select><em class="set-mode-note"></em></label>
       <label><span>参数</span><input class="set-args" spellcheck="false"></label>
       <label><span>npm 包</span><input class="set-pkg" spellcheck="false"></label>
     </div>
@@ -1781,6 +1782,34 @@ function cliSetRow(cli) {
   const defaults = (cli.defaultArgs || []).join(' ');
   argsInput.placeholder = defaults ? `内置：${defaults}` : '无内置参数';
 
+  // 启动模式：每款 CLI 预置几组启动参数（如 Bypass Permissions），选一组就整组生效；
+  // 手填了参数则以参数为准，模式不再参与，避免两套配置打架。
+  const modeSelect = row.querySelector('.set-mode');
+  const modeNote = row.querySelector('.set-mode-note');
+  const modes = Array.isArray(cli.modes) ? cli.modes : [];
+  const paintMode = () => {
+    if (!modes.length) return;
+    const picked = modes.find((m) => m.id === modeSelect.value)
+      || modes.find((m) => m.id === cli.mode)
+      || modes[0];
+    const manual = splitCommand(argsInput.value);
+    const flags = manual.length ? manual : (picked?.args || []);
+    const manualText = '已手填参数，启动模式不生效';
+    modeNote.textContent = manual.length ? manualText : (flags.length ? flags.join(' ') : '无附加参数');
+    modeNote.title = manual.length ? manualText : (picked?.note || flags.join(' ') || '无附加参数');
+    modeNote.classList.toggle('warn', manual.length > 0);
+  };
+  if (modes.length) {
+    row.querySelector('.cli-mode-label').hidden = false;
+    modeSelect.innerHTML = modes
+      .map((m) => `<option value="${escapeHTML(m.id)}">${escapeHTML(m.label)}</option>`)
+      .join('');
+    // 直接显示当前实际生效的模式，选了就落成覆盖项；想彻底回默认用右侧的 ↺。
+    modeSelect.value = cli.mode || cli.overrideMode || modes[0].id;
+    paintMode();
+    argsInput.addEventListener('input', paintMode);
+  }
+
   const pkgInput = row.querySelector('.set-pkg');
   pkgInput.value = cli.overridePkg || '';
   pkgInput.placeholder = cli.detectedPkg ? `检测到：${cli.detectedPkg}` : '例如 @scope/name';
@@ -1798,6 +1827,7 @@ function cliSetRow(cli) {
         id: cli.id,
         path: pathInput.value.trim(),
         args: splitCommand(argsInput.value),
+        mode: modeSelect.value,
         package: pkgInput.value.trim(),
         enabled: enable.checked,
       });
@@ -1807,6 +1837,8 @@ function cliSetRow(cli) {
         apply(next);
         pathInput.placeholder = next.path || `自动探测（${next.bin}）`;
         pkgInput.placeholder = next.detectedPkg ? `检测到：${next.detectedPkg}` : '例如 @scope/name';
+        modeSelect.value = next.mode || modeSelect.value;
+        paintMode();
       }
       // 让看板/流水线的 CLI 下拉下次重新探测。
       if (typeof boardState !== 'undefined') boardState.agents = [];
@@ -1821,6 +1853,7 @@ function cliSetRow(cli) {
 
   pathInput.addEventListener('change', save);
   argsInput.addEventListener('change', save);
+  if (modes.length) modeSelect.addEventListener('change', () => { paintMode(); save(); });
   pkgInput.addEventListener('change', save);
   enable.addEventListener('change', save);
   row.querySelector('.cli-set-act').addEventListener('click', () => startCliJob(cli.id));
@@ -1869,10 +1902,32 @@ function renderReleaseMarkdown(text) {
       inList = false;
     }
   };
-  for (const raw of lines) {
+  // 表格行按 | 切格，首尾的竖线去掉，空白格留空。
+  const cells = (row) => row.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+  const isDivider = (row) => /^\s*\|.*\|\s*$/.test(row) && cells(row).every((cell) => /^:?-{2,}:?$/.test(cell));
+  for (let i = 0; i < lines.length; i += 1) {
+    const raw = lines[i];
     const line = raw.replace(/\s+$/, '');
     if (!line.trim()) {
       closeList();
+      continue;
+    }
+    // 表头 + |---| 分隔行 + 若干数据行，合成一张表。
+    if (/^\s*\|.*\|\s*$/.test(line) && i + 1 < lines.length && isDivider(lines[i + 1])) {
+      closeList();
+      const head = cells(line);
+      const rows = [];
+      i += 2;
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        rows.push(cells(lines[i]));
+        i += 1;
+      }
+      i -= 1;
+      const headHTML = head.map((cell) => `<th>${inline(cell)}</th>`).join('');
+      const bodyHTML = rows
+        .map((row) => `<tr>${head.map((_, k) => `<td>${inline(row[k] || '')}</td>`).join('')}</tr>`)
+        .join('');
+      out.push(`<table class="md-table"><thead><tr>${headHTML}</tr></thead><tbody>${bodyHTML}</tbody></table>`);
       continue;
     }
     const heading = line.match(/^#{1,6}\s+(.*)$/);

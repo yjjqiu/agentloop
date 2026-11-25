@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="vendor/xterm.css">
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="docs.css">
 </head>
 <body>
 <div class="app">
@@ -82,6 +83,7 @@
           <span class="pb-name" id="pbName">未选择项目</span>
           <span class="pb-path" id="pbPath"></span>
           <button id="backToBoard" class="btn mini ghost" type="button" hidden>← 看板</button>
+          <button id="openDocs" class="btn mini ghost" type="button" hidden>资料</button>
         </div>
 
         <div class="term-card" hidden>
@@ -196,6 +198,25 @@
             </div>
             <div class="flow-agents" id="flowAgents"></div>
           </section>
+        </section>
+
+        <section class="docs-panel" id="projectDocs" hidden>
+          <header class="docs-head">
+            <div class="docs-title">
+              <div class="docs-eyebrow">项目资料</div>
+              <h2 id="docsName">—</h2>
+              <p class="docs-sub" id="docsPath"></p>
+            </div>
+            <div class="docs-actions">
+              <input id="docsFilter" class="docs-filter" type="search" spellcheck="false" placeholder="筛选文件…">
+              <button id="docsRefresh" class="btn mini ghost" type="button">刷新</button>
+              <button id="docsBack" class="btn mini ghost" type="button">← 看板</button>
+            </div>
+          </header>
+          <div class="docs-body">
+            <aside class="docs-side" id="docsSide"></aside>
+            <article class="docs-view" id="docsView"></article>
+          </div>
         </section>
       </div>
     </main>
@@ -560,5 +581,6 @@
 <script src="avatars.js"></script>
 <script src="app.js"></script>
 <script src="board.js"></script>
+<script src="docs.js"></script>
 </body>
 </html>

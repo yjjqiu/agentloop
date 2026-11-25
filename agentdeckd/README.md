@@ -41,6 +41,7 @@ Windows / Linux / macOS 都能编译：PTY 按平台拆在 `platform_windows.go`
 | `sessions.go` | PTY 会话管理、SSE 流、tail 预览 |
 | `agents.go` | `agents.json` 解析与 CLI 探测（一次扫描 PATH 的索引） |
 | `workflows.go` | LoopForge 工作流扫描与本机安装状态 |
+| `project_overview.go` | 项目资料看板：文档扫描、任务产物、目录树、Git 状态与单文件预览 |
 | `config.go` / `versions.go` / `releases.go` / `install.go` 等 | 配置持久化、版本检查、更新说明拉取、npm 安装任务 |
 | `version.go` | 版本号（`var version`，发版用 ldflags 覆盖）与发布仓库 `yjjqiu/agentloop` |
 | `update.go` | 查 GitHub Releases 最新版、版本比较、30 分钟缓存 |
@@ -48,7 +49,7 @@ Windows / Linux / macOS 都能编译：PTY 按平台拆在 `platform_windows.go`
 | `platform_windows.go` / `platform_unix.go` | PTY 启动、命令包装、PATH 扩展等平台差异 |
 
 前端在 `ui/`：`index.html` + `app.js`（外壳 / 终端 / 设置）+ `board.js`（看板与阶段流程）
-+ `avatars.js`（品牌头像），样式 `app.css` / `board.css`。
++ `docs.js`（项目资料看板）+ `avatars.js`（品牌头像），样式 `app.css` / `board.css` / `docs.css`。
 
 ## 界面主题
 
@@ -123,6 +124,13 @@ Windows / Linux / macOS 都能编译：PTY 按平台拆在 `platform_windows.go`
 - 数据在 `agents.json` 的 `stages`（键与 `pipeline.go` 的 `stageMeta` 一致）和 `fitNote`，
   依据公开评测与产品定位整理，属于参考值，可直接改 JSON 调整。
 
+每行中间还有一组「启动模式」下拉（`agents.json` 的 `modes` / `defaultMode`）：把常用的
+启动参数打成预设，例如 Claude Code 的「全自动（跳过确认）」= `--dangerously-skip-permissions`、
+「计划模式（只读）」= `--permission-mode plan`，Codex 的「全自动（含沙箱）」=
+`--dangerously-bypass-approvals-and-sandbox`。选一项就整组生效，右侧灰字是这组参数的实际内容；
+手填「参数」后以参数为准，模式不再参与（灰字会变成提醒色）。没有预设的 CLI 不显示这一栏。
+保存时写入 `config.json` 的 `cliOverrides.<id>.mode`，改完对新建终端和流水线立即生效。
+
 每行末尾的「更新内容」（点版本徽标也可以）会打开右侧抽屉，显示该 CLI 最新版本的
 发布说明：先按 `agents.json` 的 `repo` 调 GitHub Releases，再把正文翻译成简体中文。
 译文缓存在 `%APPDATA%\agentdeckd\changelog-zh.json`（按 `repo@tag` 键），同一版本只翻译
@@ -150,12 +158,14 @@ CLI 列表顶部有两个版本操作：
 | POST | `/api/v1/projects/remove` | 移除 `{path}` |
 | POST | `/api/v1/projects/active` | 切当前项目 `{path}` |
 | GET | `/api/v1/workflows?root=` | 扫 `artifacts/*/workflow-state.json` |
+| GET | `/api/v1/projects/overview?root=` | 项目资料看板：`{root,name,git{branch,dirty,changed[],commits[]},docs[],manifests[],artifacts[],tree[],scannedAt}`；`root` 必须是已登记项目 |
+| GET | `/api/v1/projects/file?path=` | 预览单个文本文件 `{path,name,size,modTime,content}`；限已登记项目内、≤512KB、非二进制 |
 | GET/POST | `/api/v1/config` | 读取/保存 `lastCwd`、`localBin` |
 | GET | `/api/v1/fs/list?path=` | 浏览器模式的目录浏览：`{path,parent,home,dirs[],roots[]}`，`roots` 是快捷入口（`/workspace` + 环境变量 `AGENTDECK_ROOTS` 里的路径）；隐藏目录不列，传绝对路径可直接进 |
 | POST | `/api/v1/fs/mkdir` | 新建单级目录 `{parent,name}`，返回 `{ok,path}`；名称不允许带 `/`、`\` |
-| GET | `/api/v1/clis` | 探测注册表里的 44 款 CLI，返回 `{id,label,bin,path,installed,enabled,args,defaultArgs,overridePath,overrideArgs,overridePkg,packageName,detectedPkg,npmManaged,updateCmd,command,repo,stages,fitNote}`，已安装的排前面 |
+| GET | `/api/v1/clis` | 探测注册表里的 44 款 CLI，返回 `{id,label,bin,path,installed,enabled,args,defaultArgs,modes[],mode,overridePath,overrideArgs,overrideMode,overridePkg,packageName,detectedPkg,npmManaged,updateCmd,command,repo,stages,fitNote}`，已安装的排前面；`mode` 是当前生效的启动模式，`modes` 是可选预设 |
 | GET | `/api/v1/clis/release?id=&refresh=1` | 该 CLI 最新版本的发布说明 `{info:{repo,tag,version,title,publishedAt,url,body,zh,translated,note,error}}`，翻译结果缓存，`refresh=1` 重新拉取 |
-| POST | `/api/v1/clis/config` | 保存单款 CLI 覆盖 `{id,path,args[],package,enabled?}`，返回 `{ok,clis}` |
+| POST | `/api/v1/clis/config` | 保存单款 CLI 覆盖 `{id,path,args[],mode,package,enabled?}`，返回 `{ok,clis}`；`mode` 必须是该 CLI `modes` 里的 id，填了 `args` 时以 `args` 为准 |
 | POST | `/api/v1/clis/reset` | 清除覆盖 `{id}`，返回 `{ok,clis}` |
 | GET | `/api/v1/clis/versions?refresh=1` | 本机版本（`--version` 探测）+ npm 最新版，返回 `{versions:{id:{installed,latest,package,outdated,...}},checkedAt}`，缓存 10 分钟 |
 | GET | `/api/v1/clis/job` | 当前安装 / 更新任务快照 `{job:{target,label,kind,running,ok,error,lines[],startedAt,doneAt}}`，没有任务时为 `null` |
@@ -185,7 +195,7 @@ CLI 列表顶部有两个版本操作：
 
 ## 版本与更新检查
 
-- 版本号：`version.go` 的 `var version = "0.3.0"`，发版时 `-ldflags "-X main.version=x.y.z"` 覆盖
+- 版本号：`version.go` 的 `var version = "0.3.4"`，发版时 `-ldflags "-X main.version=x.y.z"` 覆盖
 - 更新源：GitHub Releases `releases/latest`，仓库 `yjjqiu/agentloop`（`AGENTDECK_REPO` 可覆盖）
 - 比较：点分版本号逐段比较；只有正式发布（非 prerelease）参与
 - 缓存：成功 30 分钟、失败 2 分钟；设置页「检查更新」带 `force=1`
@@ -283,6 +293,23 @@ docker run --rm --user root -v agentdeck_agentdeck-data:/data --entrypoint chown
 `agents.json` 里有 44 款 CLI 的描述（id、名称、可执行文件名、默认参数、prompt 是位置参数还是启动后注入），
 来源是 OrchestratorInc/agent-orchestrator 的 adapter 定义，改这个文件就能增删 CLI。
 新增的可选字段：`npm` 是安装 / 更新用的默认 npm 包名，`update` 是自更新命令的参数（如 pi 的 `["update"]`）。
+
+## 项目资料看板
+
+看板管「开发」，资料页管「读项目」，两者互不依赖。项目标题栏的「资料」按钮打开一页只读视图：
+
+- 左栏按组列出：概览（分支 / 改动数 / 任务数）、清单（README / CLAUDE.md / package.json /
+  requirements.txt / go.mod / Dockerfile / compose / ecosystem.config.js 等）、
+  文档（`.md` / `.markdown`，按一级目录分组，深度 4、上限 300 份）、任务产物
+  （`artifacts/<slug>/workflow-state.json` 的当前阶段与各阶段状态）、顶层结构（目录 + 条目数）
+- 右栏预览 Markdown（标题 / 列表 / 表格 / 行内代码 / 链接，先转义再上标签）；
+  「复制路径」把绝对路径塞进剪贴板
+- 概览页给出文档数 / 任务数 / 改动数 / 顶层条目，以及最近 8 条提交和未提交改动
+- 扫描跳过 `.git`、`node_modules`、`venv`、`.next`、`dist`、`target` 等重目录；
+  Git 命令统一加 `-c i18n.logOutputEncoding=UTF-8 -c core.quotepath=false`，
+  中文提交信息和中文文件名不会变成乱码或八进制转义
+
+接口只有两个（见上表），都要求 `root` / `path` 落在已登记项目内，越界直接 400。
 
 ## PTY
 

@@ -821,20 +821,28 @@ async function focusRunTerminal(root, slug) {
   }
 }
 
-// —— 项目内的两种页面：看板（项目首页）/ 终端会话 ——
+// —— 项目内的三种页面：看板（项目首页）/ 终端会话 / 项目资料 ——
 function switchTab(tab) {
   boardState.tab = tab;
   document.querySelector('.term-card').hidden = tab !== 'terminal';
   $('projectBoard').hidden = tab !== 'board';
-  $('backToBoard').hidden = tab !== 'terminal';
-  // 看板需要横向空间，切到看板时自动收起右侧工作流面板，切回终端再恢复。
+  const docsEl = $('projectDocs');
+  if (docsEl) docsEl.hidden = tab !== 'docs';
+  $('backToBoard').hidden = tab !== 'terminal' && tab !== 'docs';
+  const docsBtn = $('openDocs');
+  if (docsBtn) docsBtn.hidden = tab === 'docs';
+  // 看板/资料需要横向空间，切换时自动收起右侧工作流面板，切回终端再恢复。
   const panelEl = document.getElementById('panel');
-  if (tab === 'board') {
+  if (tab === 'board' || tab === 'docs') {
     if (panelEl && !panelEl.hidden) {
       boardState.panelWasOpen = true;
       panelEl.hidden = true;
     }
-    renderBoard(true).catch(() => {});
+    if (tab === 'board') {
+      renderBoard(true).catch(() => {});
+    } else if (typeof renderDocs === 'function') {
+      renderDocs(true).catch(() => {});
+    }
   } else {
     if (panelEl && boardState.panelWasOpen) {
       panelEl.hidden = false;

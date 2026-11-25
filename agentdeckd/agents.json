@@ -47,7 +47,25 @@
       "TASK-04": 3,
       "TASK-05": 2
     },
-    "fitNote": "git 原生自动提交 + repo map + architect 模式，小步重构最顺手"
+    "fitNote": "git 原生自动提交 + repo map + architect 模式，小步重构最顺手",
+    "modes": [
+      {
+        "id": "yes-always",
+        "label": "全自动",
+        "args": [
+          "--no-check-update",
+          "--yes-always"
+        ]
+      },
+      {
+        "id": "safe",
+        "label": "逐项确认",
+        "args": [
+          "--no-check-update"
+        ]
+      }
+    ],
+    "defaultMode": "yes-always"
   },
   {
     "id": "amp",
@@ -143,7 +161,42 @@
       "TASK-04": 5,
       "TASK-05": 4
     },
-    "fitNote": "多文件改造、边界情况与测试执行最稳，会主动补测试"
+    "fitNote": "多文件改造、边界情况与测试执行最稳，会主动补测试",
+    "modes": [
+      {
+        "id": "bypass",
+        "label": "全自动（跳过确认）",
+        "args": [
+          "--dangerously-skip-permissions"
+        ],
+        "note": "等价于 --permission-mode bypassPermissions，适合长任务连跑"
+      },
+      {
+        "id": "accept-edits",
+        "label": "自动接受编辑",
+        "args": [
+          "--permission-mode",
+          "acceptEdits"
+        ],
+        "note": "文件改动自动通过，执行命令仍会询问"
+      },
+      {
+        "id": "plan",
+        "label": "计划模式（只读）",
+        "args": [
+          "--permission-mode",
+          "plan"
+        ],
+        "note": "只读分析，不改文件"
+      },
+      {
+        "id": "safe",
+        "label": "逐项确认",
+        "args": [],
+        "note": "默认交互，每个动作都要确认"
+      }
+    ],
+    "defaultMode": "bypass"
   },
   {
     "id": "cline",
@@ -168,7 +221,22 @@
       "TASK-04": 3,
       "TASK-05": 2
     },
-    "fitNote": "Plan/Act 双模式 + MCP + 浏览器自动化，方案与开发顺手"
+    "fitNote": "Plan/Act 双模式 + MCP + 浏览器自动化，方案与开发顺手",
+    "modes": [
+      {
+        "id": "yolo",
+        "label": "全自动",
+        "args": [
+          "--yolo"
+        ]
+      },
+      {
+        "id": "safe",
+        "label": "逐项确认",
+        "args": []
+      }
+    ],
+    "defaultMode": "yolo"
   },
   {
     "id": "codewhale",
@@ -229,7 +297,46 @@
       "TASK-04": 4,
       "TASK-05": 3
     },
-    "fitNote": "公认审查最强、PR/CI 原生；大重构容易偏离既有约定"
+    "fitNote": "公认审查最强、PR/CI 原生；大重构容易偏离既有约定",
+    "modes": [
+      {
+        "id": "bypass",
+        "label": "全自动（含沙箱）",
+        "args": [
+          "-c",
+          "check_for_update_on_startup=false",
+          "-c",
+          "notice.hide_rate_limit_model_nudge=true",
+          "--dangerously-bypass-approvals-and-sandbox",
+          "--dangerously-bypass-hook-trust"
+        ]
+      },
+      {
+        "id": "workspace",
+        "label": "工作区可写",
+        "args": [
+          "-c",
+          "check_for_update_on_startup=false",
+          "-a",
+          "on-request",
+          "-s",
+          "workspace-write"
+        ]
+      },
+      {
+        "id": "readonly",
+        "label": "只读",
+        "args": [
+          "-c",
+          "check_for_update_on_startup=false",
+          "-a",
+          "never",
+          "-s",
+          "read-only"
+        ]
+      }
+    ],
+    "defaultMode": "bypass"
   },
   {
     "id": "command-code",
@@ -331,7 +438,22 @@
       "TASK-04": 2,
       "TASK-05": 2
     },
-    "fitNote": "终端体验好、LSP 感知，适合日常改码"
+    "fitNote": "终端体验好、LSP 感知，适合日常改码",
+    "modes": [
+      {
+        "id": "yolo",
+        "label": "全自动",
+        "args": [
+          "--yolo"
+        ]
+      },
+      {
+        "id": "safe",
+        "label": "逐项确认",
+        "args": []
+      }
+    ],
+    "defaultMode": "yolo"
   },
   {
     "id": "cursor",
@@ -355,7 +477,22 @@
       "TASK-04": 3,
       "TASK-05": 2
     },
-    "fitNote": "编辑器上下文快、改码顺滑，深度方案与审查一般"
+    "fitNote": "编辑器上下文快、改码顺滑，深度方案与审查一般",
+    "modes": [
+      {
+        "id": "yolo",
+        "label": "全自动",
+        "args": [
+          "--yolo"
+        ]
+      },
+      {
+        "id": "safe",
+        "label": "逐项确认",
+        "args": []
+      }
+    ],
+    "defaultMode": "yolo"
   },
   {
     "id": "deepseek-harness",
@@ -496,7 +633,35 @@
       "TASK-04": 3,
       "TASK-05": 5
     },
-    "fitNote": "百万级上下文，适合整仓/整份需求做梳理与沉淀；大重构偏弱"
+    "fitNote": "百万级上下文，适合整仓/整份需求做梳理与沉淀；大重构偏弱",
+    "modes": [
+      {
+        "id": "yolo",
+        "label": "全自动",
+        "args": [
+          "--skip-trust",
+          "--approval-mode",
+          "yolo"
+        ]
+      },
+      {
+        "id": "auto-edit",
+        "label": "自动接受编辑",
+        "args": [
+          "--skip-trust",
+          "--approval-mode",
+          "auto_edit"
+        ]
+      },
+      {
+        "id": "safe",
+        "label": "逐项确认",
+        "args": [
+          "--skip-trust"
+        ]
+      }
+    ],
+    "defaultMode": "yolo"
   },
   {
     "id": "goose",
@@ -835,7 +1000,22 @@
       "TASK-04": 3,
       "TASK-05": 2
     },
-    "fitNote": "模型无关的终端 harness，换模型方便，适合开发"
+    "fitNote": "模型无关的终端 harness，换模型方便，适合开发",
+    "modes": [
+      {
+        "id": "bypass",
+        "label": "全自动",
+        "args": [
+          "--dangerously-skip-permissions"
+        ]
+      },
+      {
+        "id": "safe",
+        "label": "逐项确认",
+        "args": []
+      }
+    ],
+    "defaultMode": "bypass"
   },
   {
     "id": "opencode-v2",
@@ -861,7 +1041,25 @@
       "TASK-04": 3,
       "TASK-05": 2
     },
-    "fitNote": "同 opencode，v2 适配层"
+    "fitNote": "同 opencode，v2 适配层",
+    "modes": [
+      {
+        "id": "bypass",
+        "label": "全自动",
+        "args": [
+          "--standalone",
+          "--dangerously-skip-permissions"
+        ]
+      },
+      {
+        "id": "safe",
+        "label": "逐项确认",
+        "args": [
+          "--standalone"
+        ]
+      }
+    ],
+    "defaultMode": "bypass"
   },
   {
     "id": "openhands",
@@ -985,7 +1183,31 @@
       "TASK-04": 3,
       "TASK-05": 5
     },
-    "fitNote": "百万上下文 + 中文强，需求/方案/沉淀与开发都稳"
+    "fitNote": "百万上下文 + 中文强，需求/方案/沉淀与开发都稳",
+    "modes": [
+      {
+        "id": "yolo",
+        "label": "全自动",
+        "args": [
+          "--approval-mode",
+          "yolo"
+        ]
+      },
+      {
+        "id": "auto-edit",
+        "label": "自动接受编辑",
+        "args": [
+          "--approval-mode",
+          "auto_edit"
+        ]
+      },
+      {
+        "id": "safe",
+        "label": "逐项确认",
+        "args": []
+      }
+    ],
+    "defaultMode": "yolo"
   },
   {
     "id": "stakpak",

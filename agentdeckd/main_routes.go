@@ -16,6 +16,7 @@ import (
 func (a *App) routes(mux *http.ServeMux) {
 	a.registerSystemRoutes(mux)
 	a.registerProjectRoutes(mux)
+	a.registerOverviewRoutes(mux)
 	a.registerCliRoutes(mux)
 	a.registerPipelineRoutes(mux)
 	a.registerSessionRoutes(mux)
@@ -193,6 +194,7 @@ func (a *App) registerCliRoutes(mux *http.ServeMux) {
 			ID      string   `json:"id"`
 			Path    string   `json:"path"`
 			Args    []string `json:"args"`
+			Mode    string   `json:"mode"`
 			Package string   `json:"package"`
 			Enabled *bool    `json:"enabled"`
 		}
@@ -200,13 +202,23 @@ func (a *App) registerCliRoutes(mux *http.ServeMux) {
 			writeError(w, http.StatusBadRequest, "缺少 id")
 			return
 		}
-		if _, ok := agentByID(body.ID); !ok {
+		def, ok := agentByID(body.ID)
+		if !ok {
 			writeError(w, http.StatusBadRequest, "未知的 CLI: "+body.ID)
 			return
 		}
+		args := normalizeArgs(body.Args)
+		mode := strings.TrimSpace(body.Mode)
+		if mode != "" {
+			if _, ok := pickMode(def, mode); !ok {
+				writeError(w, http.StatusBadRequest, "该 CLI 没有启动模式: "+mode)
+				return
+			}
+		}
 		a.config.SetCliOverride(body.ID, CliOverride{
 			Path:    strings.TrimSpace(body.Path),
-			Args:    normalizeArgs(body.Args),
+			Args:    args,
+			Mode:    mode,
 			Package: strings.TrimSpace(body.Package),
 			Enabled: body.Enabled,
 		})

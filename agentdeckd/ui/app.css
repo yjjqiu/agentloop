@@ -1154,6 +1154,28 @@ kbd {
   background: var(--hover);
 }
 .rel-body a { color: var(--accent); }
+/* Markdown 表格：发布说明和项目资料看板共用同一套渲染，样式也对齐。 */
+.md-table {
+  width: 100%;
+  margin: 10px 0 14px;
+  border-collapse: collapse;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+.md-table th,
+.md-table td {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.md-table th {
+  background: var(--surface-3);
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.md-table td { color: var(--text-dim); }
 .rel-state {
   display: flex;
   flex-direction: column;
@@ -1317,6 +1339,32 @@ kbd {
   outline: none;
 }
 .cli-set-grid input:focus { border-color: rgba(var(--accent-rgb), .5); }
+.cli-set-grid select {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11.5px;
+  outline: none;
+}
+.cli-set-grid select:focus { border-color: rgba(var(--accent-rgb), .5); }
+/* 模式后面的实际参数预览：浅灰等宽，手填参数覆盖时变成提醒色。 */
+.cli-set-grid .set-mode-note {
+  flex: 0 1 auto;
+  max-width: 46%;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cli-set-grid .set-mode-note.warn { color: var(--amber); }
 .cli-set-foot { display: flex; align-items: center; gap: 8px; font-size: 10.5px; color: var(--text-faint); }
 .cli-set-foot .detected {
   font-family: var(--mono);

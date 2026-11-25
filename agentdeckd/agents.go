@@ -12,19 +12,29 @@ import (
 //go:embed agents.json
 var agentsJSON []byte
 
+// AgentMode 是一套预设启动参数，例如「全自动」「只读」。
+type AgentMode struct {
+	ID    string   `json:"id"`
+	Label string   `json:"label"`
+	Note  string   `json:"note,omitempty"`
+	Args  []string `json:"args"`
+}
+
 // AgentDef 是一款 coding agent CLI 的静态描述。
 type AgentDef struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Bin       string   `json:"bin"`
-	AltBins   []string `json:"altBins,omitempty"`
-	Args      []string `json:"args,omitempty"`
-	Prompt    string   `json:"prompt,omitempty"`    // positional / after-start
-	PromptArg string   `json:"promptArg,omitempty"` // positional 时的分隔参数，如 "--"
-	Note      string   `json:"note,omitempty"`
-	Npm       string   `json:"npm,omitempty"`    // 默认 npm 包名，用于安装 / 更新
-	Update    []string `json:"update,omitempty"` // 自更新命令参数，例如 pi 的 ["update"]
-	Repo      string   `json:"repo,omitempty"`   // GitHub 仓库（owner/name），用于拉取最新发布说明
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	Bin         string      `json:"bin"`
+	AltBins     []string    `json:"altBins,omitempty"`
+	Args        []string    `json:"args,omitempty"`
+	Modes       []AgentMode `json:"modes,omitempty"`       // 预设启动模式；为空表示只有默认一种
+	DefaultMode string      `json:"defaultMode,omitempty"` // 默认使用的模式 id
+	Prompt      string      `json:"prompt,omitempty"`      // positional / after-start
+	PromptArg   string      `json:"promptArg,omitempty"`   // positional 时的分隔参数，如 "--"
+	Note        string      `json:"note,omitempty"`
+	Npm         string      `json:"npm,omitempty"`    // 默认 npm 包名，用于安装 / 更新
+	Update      []string    `json:"update,omitempty"` // 自更新命令参数，例如 pi 的 ["update"]
+	Repo        string      `json:"repo,omitempty"`   // GitHub 仓库（owner/name），用于拉取最新发布说明
 	// Stages 是这款 CLI 在 6 个阶段上的适配度（0-5，5 最顶尖），键与流水线阶段一致。
 	Stages  map[string]int `json:"stages,omitempty"`
 	FitNote string         `json:"fitNote,omitempty"` // 适配说明（一句话）
@@ -33,10 +43,31 @@ type AgentDef struct {
 // AgentStatus 是探测后的运行时状态。
 type AgentStatus struct {
 	AgentDef
-	Path        string   `json:"path"`
-	Installed   bool     `json:"installed"`
-	Enabled     bool     `json:"enabled"`
-	DefaultArgs []string `json:"defaultArgs,omitempty"`
+	Path        string      `json:"path"`
+	Installed   bool        `json:"installed"`
+	Enabled     bool        `json:"enabled"`
+	DefaultArgs []string    `json:"defaultArgs,omitempty"`
+	Mode        string      `json:"mode,omitempty"`  // 当前生效的启动模式 id；空表示自定义参数或没有模式
+	Modes       []AgentMode `json:"modes,omitempty"` // 该 CLI 支持的启动模式
+}
+
+// pickMode 选出当前生效的启动模式：优先生效用户选的，其次内置默认，最后第一个。
+func pickMode(def AgentDef, want string) (AgentMode, bool) {
+	if len(def.Modes) == 0 {
+		return AgentMode{}, false
+	}
+	want = strings.TrimSpace(want)
+	for _, m := range def.Modes {
+		if m.ID == want && want != "" {
+			return m, true
+		}
+	}
+	for _, m := range def.Modes {
+		if m.ID == def.DefaultMode {
+			return m, true
+		}
+	}
+	return def.Modes[0], true
 }
 
 var agentDefs = mustParseAgents()
@@ -165,8 +196,13 @@ func DetectAgentsWith(overrides map[string]CliOverride) []AgentStatus {
 		ov := overrides[def.ID]
 		base := def
 		path := resolveAgentWithIndex(idx, base, ov)
+		mode := ""
 		if len(ov.Args) > 0 {
+			// 用户手工填了参数：整组覆盖，模式不再生效。
 			base.Args = ov.Args
+		} else if m, ok := pickMode(def, ov.Mode); ok {
+			base.Args = m.Args
+			mode = m.ID
 		}
 		enabled := true
 		if ov.Enabled != nil {
@@ -178,6 +214,8 @@ func DetectAgentsWith(overrides map[string]CliOverride) []AgentStatus {
 			Installed:   path != "",
 			Enabled:     enabled,
 			DefaultArgs: def.Args,
+			Mode:        mode,
+			Modes:       def.Modes,
 		})
 	}
 	sort.SliceStable(out, func(i, j int) bool {

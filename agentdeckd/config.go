@@ -19,6 +19,7 @@ import (
 type CliOverride struct {
 	Path    string   `json:"path,omitempty"`
 	Args    []string `json:"args,omitempty"`
+	Mode    string   `json:"mode,omitempty"`    // 启动模式 id；填写后忽略内置参数，除非同时填了 Args
 	Package string   `json:"package,omitempty"` // npm 包名，未安装时用于一键安装
 	Enabled *bool    `json:"enabled,omitempty"`
 }
@@ -213,6 +214,13 @@ func (c *Config) CliOverridesSnapshot() map[string]CliOverride {
 	return out
 }
 
+// ProjectsSnapshot 返回当前存在的项目目录副本。
+func (c *Config) ProjectsSnapshot() []string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.existsProjects()
+}
+
 // SetCliOverride 保存覆盖设置；清空且启用时删除条目，回到默认。
 func (c *Config) SetCliOverride(id string, ov CliOverride) {
 	c.mu.Lock()
@@ -220,7 +228,7 @@ func (c *Config) SetCliOverride(id string, ov CliOverride) {
 	if c.CliOverrides == nil {
 		c.CliOverrides = map[string]CliOverride{}
 	}
-	if ov.Path == "" && ov.Package == "" && len(ov.Args) == 0 && (ov.Enabled == nil || *ov.Enabled) {
+	if ov.Path == "" && ov.Package == "" && ov.Mode == "" && len(ov.Args) == 0 && (ov.Enabled == nil || *ov.Enabled) {
 		delete(c.CliOverrides, id)
 	} else {
 		c.CliOverrides[id] = ov
