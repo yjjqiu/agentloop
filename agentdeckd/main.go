@@ -148,7 +148,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("加载界面资源失败: %v", err)
 		}
-		mux.Handle("/", http.FileServer(http.FS(static)))
+		// 内置资源同样禁止缓存：界面是随二进制一起发的，换版本就是换界面，
+		// 一旦被浏览器或 CDN 缓存住，用户会一直看到旧界面。
+		mux.Handle("/", noStore(http.FileServer(http.FS(static))))
 	}
 
 	// 未开令牌（本机监听）时额外校验 Host，防 DNS rebinding。
