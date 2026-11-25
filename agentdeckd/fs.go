@@ -22,6 +22,8 @@ type fsListing struct {
 	Parent string    `json:"parent,omitempty"`
 	Home   string    `json:"home,omitempty"`
 	Dirs   []fsEntry `json:"dirs"`
+	// Roots 是快捷入口（工作区 + 挂载进来的宿主机目录），界面顶部显示成按钮。
+	Roots []fsEntry `json:"roots,omitempty"`
 }
 
 // registerFsRoutes 注册目录浏览接口，供浏览器模式选择项目/工作目录。
@@ -40,6 +42,7 @@ func (a *App) registerFsRoutes(mux *http.ServeMux) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		listing.Roots = rootShortcuts()
 		writeJSON(w, http.StatusOK, listing)
 	})
 
@@ -115,4 +118,33 @@ func listDirs(path string) (fsListing, error) {
 	}
 	listing.Home, _ = os.UserHomeDir()
 	return listing, nil
+}
+
+// rootShortcuts 返回目录选择器的快捷入口：工作区，加上 AGENTDECK_ROOTS
+// 里配置的宿主机目录（容器部署时把宿主项目挂进来，省得在一堆系统目录里找）。
+// 格式：逗号分隔的绝对路径，例如 /workspace,/home/ubuntu/czlingfu-site。
+func rootShortcuts() []fsEntry {
+	candidates := []fsEntry{{Name: "工作区", Path: "/workspace"}}
+	for _, raw := range strings.Split(os.Getenv("AGENTDECK_ROOTS"), ",") {
+		path := strings.TrimSpace(raw)
+		if path == "" {
+			continue
+		}
+		candidates = append(candidates, fsEntry{Name: filepath.Base(path), Path: path})
+	}
+
+	roots := make([]fsEntry, 0, len(candidates))
+	seen := map[string]bool{}
+	for _, entry := range candidates {
+		if seen[entry.Path] {
+			continue
+		}
+		info, err := os.Stat(entry.Path)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		seen[entry.Path] = true
+		roots = append(roots, entry)
+	}
+	return roots
 }

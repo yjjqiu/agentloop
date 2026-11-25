@@ -151,7 +151,7 @@ CLI 列表顶部有两个版本操作：
 | POST | `/api/v1/projects/active` | 切当前项目 `{path}` |
 | GET | `/api/v1/workflows?root=` | 扫 `artifacts/*/workflow-state.json` |
 | GET/POST | `/api/v1/config` | 读取/保存 `lastCwd`、`localBin` |
-| GET | `/api/v1/fs/list?path=` | 浏览器模式的目录浏览：列出子目录 `{path,parent,home,dirs:[{name,path}]}`（隐藏目录不列，传绝对路径可直接进） |
+| GET | `/api/v1/fs/list?path=` | 浏览器模式的目录浏览：`{path,parent,home,dirs[],roots[]}`，`roots` 是快捷入口（`/workspace` + 环境变量 `AGENTDECK_ROOTS` 里的路径）；隐藏目录不列，传绝对路径可直接进 |
 | POST | `/api/v1/fs/mkdir` | 新建单级目录 `{parent,name}`，返回 `{ok,path}`；名称不允许带 `/`、`\` |
 | GET | `/api/v1/clis` | 探测注册表里的 44 款 CLI，返回 `{id,label,bin,path,installed,enabled,args,defaultArgs,overridePath,overrideArgs,overridePkg,packageName,detectedPkg,npmManaged,updateCmd,command,repo,stages,fitNote}`，已安装的排前面 |
 | GET | `/api/v1/clis/release?id=&refresh=1` | 该 CLI 最新版本的发布说明 `{info:{repo,tag,version,title,publishedAt,url,body,zh,translated,note,error}}`，翻译结果缓存，`refresh=1` 重新拉取 |
@@ -228,6 +228,27 @@ CLI 列表顶部有两个版本操作：
 
 注意：容器 / 服务用户里要自己装 CLI（`npm i -g @anthropic-ai/claude-code` 等），
 AgentDeck 的「CLI 设置」页也能装，装到 `NPM_CONFIG_PREFIX` 指向的目录。
+
+容器默认只看得到 `/workspace` 和 `/data`，宿主机上的目录不挂进来是浏览不到的。
+要让界面直接选已有项目，用 compose 挂载 + `AGENTDECK_ROOTS` 配快捷入口：
+
+```yaml
+    user: "1000:1000"                         # 与宿主项目属主一致才能写文件
+    environment:
+      HOME: /data/home                        # npm / CLI 的 ~ 落进数据卷
+      AGENTDECK_ROOTS: /workspace,/home/ubuntu/czlingfu-site
+    volumes:
+      - /home/ubuntu/czlingfu-site:/home/ubuntu/czlingfu-site
+```
+
+换成非 1001 的 `user` 时，记得把数据卷也 chown 成同一个 uid：
+
+```bash
+docker run --rm --user root -v agentdeck_agentdeck-data:/data --entrypoint chown \
+  ghcr.io/yjjqiu/agentdeckd:<版本> -R 1000:1000 /data
+```
+
+目录选择器顶部会把这些路径显示成快捷入口；没挂进来的宿主目录在容器里不存在。
 
 ## 阶段编排（看板）
 

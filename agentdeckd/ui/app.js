@@ -746,6 +746,7 @@ async function loadDir(path) {
   try {
     const listing = await api.listDirs(path);
     dirCurrent = listing.path;
+    renderDirRoots(listing.roots || []);
     $('dirPath').value = listing.path;
     $('dirUp').disabled = !listing.parent;
     $('dirUp').dataset.parent = listing.parent || '';
@@ -771,6 +772,26 @@ async function loadDir(path) {
   } catch (error) {
     errorEl.textContent = String(error.message || error);
     errorEl.hidden = false;
+  }
+}
+
+// renderDirRoots 渲染快捷入口：工作区和容器里挂进来的宿主机项目目录。
+function renderDirRoots(roots) {
+  const box = $('dirRoots');
+  box.textContent = '';
+  if (!roots.length) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  for (const root of roots) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'dir-root';
+    chip.textContent = root.name;
+    chip.title = root.path;
+    chip.addEventListener('click', () => loadDir(root.path));
+    box.appendChild(chip);
   }
 }
 

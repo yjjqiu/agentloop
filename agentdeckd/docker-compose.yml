@@ -29,11 +29,19 @@ services:
       # 容器里装 CLI 常用的 npm 全局目录，配合 /data 持久化。
       NPM_CONFIG_PREFIX: /data/npm-global
       PATH: /data/npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      # 目录选择器里的快捷入口（逗号分隔的绝对路径），一般写挂载进来的宿主目录。
+      AGENTDECK_ROOTS: ${AGENTDECK_ROOTS:-}
+      # 挂载宿主目录且宿主用户不是 1001 时，让容器用同一个 uid，
+      # 并把 HOME 指到数据卷（否则 npm / CLI 的 ~/.xxx 写不进去）：
+      # user: "1000:1000"
+      # HOME: /data/home
     volumes:
       # 配置、会话状态、npm 全局包都放数据卷里，重建容器不丢。
       - agentdeck-data:/data
       # 要交给 AgentDeck 开发的项目目录（按需改成本机路径）。
       - ${AGENTDECK_WORKSPACE:-./workspace}:/workspace
+      # 宿主机上已有的项目：挂进来后目录选择器能直接看到（路径保持一致，脚本不用改）。
+      # - /home/ubuntu/czlingfu-site:/home/ubuntu/czlingfu-site
     command: ["-addr", "0.0.0.0:3210", "-data", "/data"]
 
 volumes:
