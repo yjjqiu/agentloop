@@ -831,6 +831,8 @@ function switchTab(tab) {
   $('backToBoard').hidden = tab !== 'terminal' && tab !== 'docs';
   const docsBtn = $('openDocs');
   if (docsBtn) docsBtn.hidden = tab === 'docs';
+  const chatBtn = $('openChat');
+  if (chatBtn) chatBtn.hidden = !state.active;
   // 看板/资料需要横向空间，切换时自动收起右侧工作流面板，切回终端再恢复。
   const panelEl = document.getElementById('panel');
   if (tab === 'board' || tab === 'docs') {

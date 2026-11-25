@@ -29,12 +29,15 @@ type AgentDef struct {
 	Args        []string    `json:"args,omitempty"`
 	Modes       []AgentMode `json:"modes,omitempty"`       // 预设启动模式；为空表示只有默认一种
 	DefaultMode string      `json:"defaultMode,omitempty"` // 默认使用的模式 id
-	Prompt      string      `json:"prompt,omitempty"`      // positional / after-start
-	PromptArg   string      `json:"promptArg,omitempty"`   // positional 时的分隔参数，如 "--"
-	Note        string      `json:"note,omitempty"`
-	Npm         string      `json:"npm,omitempty"`    // 默认 npm 包名，用于安装 / 更新
-	Update      []string    `json:"update,omitempty"` // 自更新命令参数，例如 pi 的 ["update"]
-	Repo        string      `json:"repo,omitempty"`   // GitHub 仓库（owner/name），用于拉取最新发布说明
+	// ContextWindow 是上下文窗口大小，界面算「上下文用了几成」时用；
+	// 会话记录里能读到真实窗口的（如 Codex）优先用真实值。
+	ContextWindow int64    `json:"contextWindow,omitempty"`
+	Prompt        string   `json:"prompt,omitempty"`    // positional / after-start
+	PromptArg     string   `json:"promptArg,omitempty"` // positional 时的分隔参数，如 "--"
+	Note          string   `json:"note,omitempty"`
+	Npm           string   `json:"npm,omitempty"`    // 默认 npm 包名，用于安装 / 更新
+	Update        []string `json:"update,omitempty"` // 自更新命令参数，例如 pi 的 ["update"]
+	Repo          string   `json:"repo,omitempty"`   // GitHub 仓库（owner/name），用于拉取最新发布说明
 	// Stages 是这款 CLI 在 6 个阶段上的适配度（0-5，5 最顶尖），键与流水线阶段一致。
 	Stages  map[string]int `json:"stages,omitempty"`
 	FitNote string         `json:"fitNote,omitempty"` // 适配说明（一句话）

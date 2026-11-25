@@ -112,6 +112,11 @@ const api = {
     { method: 'POST' },
   ).catch(() => {}),
   kill: (id) => req(`/api/v1/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {}),
+  sessionContext: (id) => req(`/api/v1/sessions/${encodeURIComponent(id)}/context`).catch(() => null),
+  projectChat: (root, agent) => req('/api/v1/projects/chat', {
+    method: 'POST',
+    body: JSON.stringify(agent ? { root, agent } : { root }),
+  }),
   listDirs: (path) => req(`/api/v1/fs/list?path=${encodeURIComponent(path || '')}`),
   mkdirDir: (parent, name) => req('/api/v1/fs/mkdir', {
     method: 'POST',
@@ -1230,8 +1235,76 @@ function setActive(id) {
   emptyState.hidden = sessions.size > 0;
   renderTermBar();
   renderRail();
+  refreshContext();
   const session = sessions.get(id);
   if (session) requestAnimationFrame(() => { fitActive(); session.term.focus(); });
+}
+
+// —— 上下文额度 ——
+// 每个终端单独取数：Claude Code / Codex 读各自的会话记录，其它 CLI 扫终端文字；
+// 取不到就不显示，不编造百分比。超过阈值时提示换新终端。
+const CTX_COLD = 70; // 开始变色
+const CTX_HOT = 85; // 建议换新终端
+const ctxWarned = new Set();
+let ctxTimer = 0;
+
+function formatTokens(n) {
+  const value = Number(n) || 0;
+  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+  if (value >= 1000) return `${Math.round(value / 1000)}k`;
+  return String(value);
+}
+
+function paintContext(usage) {
+  const meter = $('ctxMeter');
+  const label = $('ctxLabel');
+  const fill = $('ctxFill');
+  const fork = $('termFork');
+  if (!meter) return;
+  if (!usage || !usage.known) {
+    meter.hidden = true;
+    if (fork) fork.hidden = true;
+    return;
+  }
+  const percent = usage.percent || 0;
+  meter.hidden = false;
+  const approx = usage.estimated ? '≈' : '';
+  label.textContent = percent > 0 ? `上下文 ${approx}${Math.round(percent)}%` : `上下文 ${formatTokens(usage.used)}`;
+  const detail = usage.limit > 0
+    ? `已用 ${Number(usage.used).toLocaleString()} / ${Number(usage.limit).toLocaleString()} tokens${usage.estimated ? '（上限按默认窗口估算）' : ''}`
+    : `已用 ${Number(usage.used).toLocaleString()} tokens（上限未知）`;
+  meter.title = usage.source ? `${detail} · 来源 ${usage.source}` : detail;
+  meter.classList.toggle('warn', percent >= CTX_COLD);
+  meter.classList.toggle('danger', percent >= CTX_HOT);
+  fill.style.width = `${Math.min(100, Math.max(percent > 0 ? 3 : 0, percent))}%`;
+  if (fork) fork.hidden = percent < CTX_HOT;
+}
+
+async function refreshContext() {
+  const session = sessions.get(activeId);
+  if (!session || session.state !== 'running') {
+    paintContext(null);
+    return;
+  }
+  const usage = await api.sessionContext(session.id);
+  if (activeId !== session.id) return;
+  paintContext(usage);
+  if (usage && usage.known && usage.percent >= CTX_HOT && !ctxWarned.has(session.id)) {
+    ctxWarned.add(session.id);
+    if (typeof boardToast === 'function') {
+      boardToast(`上下文已用 ${Math.round(usage.percent)}%，建议换一个新终端接着做`);
+    }
+  }
+}
+
+function startContextPolling() {
+  clearInterval(ctxTimer);
+  ctxTimer = setInterval(() => {
+    if (document.hidden) return;
+    if (typeof boardState !== 'undefined' && boardState.tab !== 'terminal') return;
+    refreshContext();
+  }, 6000);
+  refreshContext();
 }
 
 function removeSession(id) {
@@ -2331,6 +2404,26 @@ $('addProject').addEventListener('click', async () => {
 });
 $('emptyNew').addEventListener('click', () => openModal());
 $('termNew').addEventListener('click', () => openModal(state.active));
+// 上下文快满时，用同样的 CLI 和工作目录另起一个终端，旧终端留着当记录。
+$('termFork').addEventListener('click', async () => {
+  const session = sessions.get(activeId);
+  if (!session) return;
+  ctxWarned.delete(session.id);
+  await createSession({ command: session.command, cwd: session.cwd, agent: session.agent || '' });
+});
+// 项目对话：只读项目现状，不进流水线、不写 artifacts。
+$('openChat').addEventListener('click', async () => {
+  if (!state.active) return;
+  try {
+    const result = await api.projectChat(state.active);
+    if (result?.session) {
+      attachSession(result.session);
+      if (typeof switchTab === 'function') switchTab('terminal');
+    }
+  } catch (error) {
+    alert(`打开项目对话失败：${error.message || error}`);
+  }
+});
 $('cancel').addEventListener('click', closeModal);
 $('create').addEventListener('click', createFromModal);
 $('pickDir').addEventListener('click', async () => {
@@ -2612,6 +2705,7 @@ window.addEventListener('resize', () => requestAnimationFrame(fitActive));
   state.timer = setInterval(() => {
     refresh().catch(() => {});
   }, 3000);
+  startContextPolling();
 
   const demo = params.get('demo');
   if (demo) createSession({ command: demo, cwd: cwdInput.value });

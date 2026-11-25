@@ -139,6 +139,7 @@
   },
   {
     "id": "claude-code",
+    "contextWindow": 200000,
     "name": "Claude Code",
     "bin": "claude",
     "npm": "@anthropic-ai/claude-code",

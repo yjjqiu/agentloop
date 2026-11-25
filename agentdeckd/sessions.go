@@ -35,6 +35,7 @@ type Session struct {
 	title    string
 	agent    string // 会话对应的 CLI id（流水线派发时写入，界面用来画品牌头像）
 	Cwd      string
+	Started  time.Time // 启动时刻，用来在 CLI 的会话记录里定位本终端对应的文件
 	pty      ptyHost
 	mu       sync.Mutex
 	subs     map[chan Event]struct{}
@@ -143,6 +144,13 @@ func (s *Session) SetAgent(agent string) {
 	s.mu.Lock()
 	s.agent = agent
 	s.mu.Unlock()
+}
+
+// AgentID 返回会话使用的 CLI id（可能为空）。
+func (s *Session) AgentID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.agent
 }
 
 // SetTitle 给会话加一个可读标记（流水线用来标「任务 · 阶段」）。
@@ -257,12 +265,13 @@ func (m *SessionManager) Start(command, cwd string) (*Session, error) {
 	m.seq++
 	id := fmt.Sprintf("s%d", m.seq)
 	session := &Session{
-		ID:    id,
-		Label: command,
-		Cwd:   workdir,
-		pty:   handle,
-		subs:  make(map[chan Event]struct{}),
-		state: "running",
+		ID:      id,
+		Label:   command,
+		Cwd:     workdir,
+		Started: time.Now(),
+		pty:     handle,
+		subs:    make(map[chan Event]struct{}),
+		state:   "running",
 	}
 	m.items[id] = session
 	m.mu.Unlock()

@@ -489,7 +489,9 @@ kbd {
   background: var(--surface-3);
   flex: none;
 }
-.pb-name { font-size: 13px; font-weight: 650; }
+.pb-name { font-size: 13px; font-weight: 650; white-space: nowrap; flex: none; }
+/* 项目条上的操作按钮不压缩，给路径留出省略空间。 */
+.proj-bar > .btn { flex: none; }
 .pb-path {
   min-width: 0;
   overflow: hidden;
@@ -575,9 +577,48 @@ kbd {
   text-align: left;
 }
 .term-bar .btn-icon { padding: 0 7px; }
+/* 上下文额度：细条 + 数字；超阈值换色，「换新终端」按钮由 JS 控制显隐。 */
+.ctx-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.ctx-meter[hidden] { display: none; }
+.ctx-bar {
+  width: 46px;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--track);
+  overflow: hidden;
+}
+.ctx-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 99px;
+  background: var(--accent);
+  transition: width .35s ease;
+}
+.ctx-meter.warn { color: var(--amber); }
+.ctx-meter.warn .ctx-bar i { background: var(--amber); }
+.ctx-meter.danger { color: var(--red); }
+.ctx-meter.danger .ctx-bar i { background: var(--red); }
+@media (max-width: 1100px) {
+  .ctx-meter .ctx-label { display: none; }
+}
+@media (max-width: 1340px) {
+  /* 窄一点时先把「运行中」这类状态标签让出来，保住标题和上下文额度。 */
+  .term-bar .pill { display: none; }
+}
 @media (max-width: 1520px) {
   .term-cwd { display: none; }
   #termNew span { display: none; }
+  #termFork span { display: none; }
 }
 
 .pill {
@@ -589,6 +630,8 @@ kbd {
   font-size: 10.5px;
   line-height: 18px;
   font-weight: 600;
+  flex: none;
+  white-space: nowrap;
 }
 .pill[hidden] { display: none; }
 .pill.muted { background: var(--hover); color: var(--text-faint); }

@@ -42,6 +42,8 @@ Windows / Linux / macOS 都能编译：PTY 按平台拆在 `platform_windows.go`
 | `agents.go` | `agents.json` 解析与 CLI 探测（一次扫描 PATH 的索引） |
 | `workflows.go` | LoopForge 工作流扫描与本机安装状态 |
 | `project_overview.go` | 项目资料看板：文档扫描、任务产物、目录树、Git 状态与单文件预览 |
+| `project_chat.go` | 「项目对话」入口：在项目根目录开一个只读现状的 CLI 终端，不进流水线 |
+| `context_usage.go` | 终端上下文额度：Claude / Codex 读会话记录，其它 CLI 扫终端文字兜底 |
 | `config.go` / `versions.go` / `releases.go` / `install.go` 等 | 配置持久化、版本检查、更新说明拉取、npm 安装任务 |
 | `version.go` | 版本号（`var version`，发版用 ldflags 覆盖）与发布仓库 `yjjqiu/agentloop` |
 | `update.go` | 查 GitHub Releases 最新版、版本比较、30 分钟缓存 |
@@ -160,6 +162,7 @@ CLI 列表顶部有两个版本操作：
 | GET | `/api/v1/workflows?root=` | 扫 `artifacts/*/workflow-state.json` |
 | GET | `/api/v1/projects/overview?root=` | 项目资料看板：`{root,name,git{branch,dirty,changed[],commits[]},docs[],manifests[],artifacts[],tree[],scannedAt}`；`root` 必须是已登记项目 |
 | GET | `/api/v1/projects/file?path=` | 预览单个文本文件 `{path,name,size,modTime,content}`；限已登记项目内、≤512KB、非二进制 |
+| POST | `/api/v1/projects/chat` | 「项目对话」：在项目根目录开一个终端并注入现状调查提示词 `{root, agent?}`，返回 `{ok,agent,session}` |
 | GET/POST | `/api/v1/config` | 读取/保存 `lastCwd`、`localBin` |
 | GET | `/api/v1/fs/list?path=` | 浏览器模式的目录浏览：`{path,parent,home,dirs[],roots[]}`，`roots` 是快捷入口（`/workspace` + 环境变量 `AGENTDECK_ROOTS` 里的路径）；隐藏目录不列，传绝对路径可直接进 |
 | POST | `/api/v1/fs/mkdir` | 新建单级目录 `{parent,name}`，返回 `{ok,path}`；名称不允许带 `/`、`\` |
@@ -186,6 +189,7 @@ CLI 列表顶部有两个版本操作：
 | DELETE | `/api/v1/sessions/{id}` | 关闭会话 |
 | GET | `/api/v1/sessions/{id}/stream` | SSE，`data` 为 base64 字节，`exit` 为退出 |
 | GET | `/api/v1/sessions/{id}/tail?max=` | 最近的纯文本输出（去掉 ANSI），看板卡片实时预览用 |
+| GET | `/api/v1/sessions/{id}/context` | 该终端的上下文占用 `{known,used,limit,percent,model,source,estimated}`；`known=false` 表示取不到 |
 | GET | `/api/v1/auth/status` | 鉴权状态 `{enabled,authenticated}` |
 | POST | `/api/v1/auth/login` | 令牌登录 `{token}`，成功后写 30 天 HttpOnly Cookie |
 | POST | `/api/v1/auth/logout` | 清 Cookie |
@@ -195,7 +199,7 @@ CLI 列表顶部有两个版本操作：
 
 ## 版本与更新检查
 
-- 版本号：`version.go` 的 `var version = "0.3.4"`，发版时 `-ldflags "-X main.version=x.y.z"` 覆盖
+- 版本号：`version.go` 的 `var version = "0.3.5"`，发版时 `-ldflags "-X main.version=x.y.z"` 覆盖
 - 更新源：GitHub Releases `releases/latest`，仓库 `yjjqiu/agentloop`（`AGENTDECK_REPO` 可覆盖）
 - 比较：点分版本号逐段比较；只有正式发布（非 prerelease）参与
 - 缓存：成功 30 分钟、失败 2 分钟；设置页「检查更新」带 `force=1`
@@ -310,6 +314,37 @@ docker run --rm --user root -v agentdeck_agentdeck-data:/data --entrypoint chown
   中文提交信息和中文文件名不会变成乱码或八进制转义
 
 接口只有两个（见上表），都要求 `root` / `path` 落在已登记项目内，越界直接 400。
+
+## 项目对话
+
+项目标题栏的「项目对话」按钮在项目根目录直接开一个 CLI 终端，第一句就是
+`project_chat.go` 里的 `projectChatPrompt`：先读 `artifacts/` 的 `workflow-state.json`、
+README/docs 的功能清单、git 最近提交，汇报进度和功能树，并明确要求先不改代码。
+
+- 选哪款 CLI：请求里指定 > 该项目 TASK-01 配的 CLI > Claude Code > 第一个可用的
+- 位置参数型 CLI（`agents.json` 的 `prompt: positional`）把提示词直接带进命令行，
+  其余等 TUI 起来后再注入
+- 只读：不写 `artifacts/`、不动 `workflow-state.json`、不参与流水线调度
+- 会话标题是「项目对话 · <项目名>」，和流水线派发的「阶段 · 任务」区分开
+
+## 终端上下文额度
+
+终端标题栏会显示当前会话占用的上下文（`GET /api/v1/sessions/{id}/context`，前端 6 秒轮询一次）。
+取数分三层，取不到就不显示，不编百分比：
+
+1. **Claude Code**：读 `~/.claude/projects/<cwd 替换非字母数字为 - 后的目录>/` 里启动后仍在写的
+   最新 `.jsonl`，取最后一条带 `usage` 的消息，已用 = input + cache_read + cache_creation + output
+2. **Codex**：读 `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` 里最后一条 `token_count`，
+   用 `last_token_usage.total_tokens` 与 `model_context_window`
+3. **通用兜底**：扫终端最近 8000 字节，匹配 `Context left until auto-compact: 40%`、
+   `35% of context left`、`context used: 60%` 这类状态行
+
+上限来源：会话记录里的真实窗口 > 模型名推断（`claude` → 200k，名字带 `[1m]` → 1M）>
+`agents.json` 的 `contextWindow`（界面标 `≈` 表示按默认窗口估算）。都拿不到就只显示已用 token。
+
+超过 70% 变琥珀色，85% 变红并在标题栏出现「换新终端」按钮——用同一个 CLI、同一个工作目录
+另起一个终端，旧终端留着当记录。以后要接新 CLI，在 `context_usage.go` 的 `computeContext`
+里加一个适配函数即可。
 
 ## PTY
 

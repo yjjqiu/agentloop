@@ -17,6 +17,7 @@ func (a *App) routes(mux *http.ServeMux) {
 	a.registerSystemRoutes(mux)
 	a.registerProjectRoutes(mux)
 	a.registerOverviewRoutes(mux)
+	a.registerChatRoutes(mux)
 	a.registerCliRoutes(mux)
 	a.registerPipelineRoutes(mux)
 	a.registerSessionRoutes(mux)
@@ -441,5 +442,14 @@ func (a *App) registerSessionRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"id": session.ID, "state": session.State(), "tail": session.TailText(max),
 		})
+	})
+
+	mux.HandleFunc("GET /api/v1/sessions/{id}/context", func(w http.ResponseWriter, r *http.Request) {
+		session := a.sessions.get(r.PathValue("id"))
+		if session == nil {
+			writeError(w, http.StatusNotFound, "会话不存在")
+			return
+		}
+		writeJSON(w, http.StatusOK, a.SessionContext(session))
 	})
 }
