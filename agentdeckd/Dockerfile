@@ -29,7 +29,7 @@ LABEL org.opencontainers.image.title="AgentDeck daemon" \
 # PTY 会话里要能跑 git、看日志、安装 CLI，这些是基础工具。
 RUN DEBIAN_FRONTEND=noninteractive apt-get update \
  && apt-get install -y --no-install-recommends \
-      ca-certificates curl git openssh-client tzdata ripgrep less procps \
+      ca-certificates curl git openssh-client tzdata ripgrep less procps jq \
  && rm -rf /var/lib/apt/lists/*
 
 # 非 root 运行；基础镜像 node 已经占用 1000，这里让系统自动分配 UID。

@@ -266,6 +266,21 @@ docker run --rm --user root -v agentdeck_agentdeck-data:/data --entrypoint chown
 
 目录选择器顶部会把这些路径显示成快捷入口；没挂进来的宿主目录在容器里不存在。
 
+容器里的 CLI 用的是容器自己的 `HOME`（`/data/home`），默认和宿主机 `~/.claude` 互不相干。
+如果宿主机的 agent 配置由 magpie 之类的外层工具管理（模型、网关地址、密钥都写在
+`~/.claude/settings.json`），想让容器里的终端跟着一起走：
+
+```yaml
+    network_mode: host                              # 容器里的 127.0.0.1 才是宿主机，才连得到本机网关
+    volumes:
+      - /home/ubuntu/.claude:/data/home/.claude     # 外层工具写的配置直接给容器里的 CLI 用
+      - /home/ubuntu/.claude:/home/ubuntu/.claude   # settings.json 里的 statusLine 用的是绝对路径
+```
+
+这样外层改模型 / 切网关，容器里新开的终端立刻跟着变；退回原配置时容器也一起退回，
+不用在 compose 里抄一份密钥。注意网关停掉时，指向它的终端会连不上——和宿主机上的
+CLI 表现一致。
+
 ## 阶段编排（看板）
 
 `pipeline*.go` 按 `workflow-state.json` 推进 LoopForge 的 6 个阶段。默认是**驱动模式**：
