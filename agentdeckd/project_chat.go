@@ -16,12 +16,49 @@ const projectChatPrompt = "先不要修改任何代码。请通读这个项目�
 	"3) git 最近提交和未提交改动说明当前在做什么；" +
 	"4) 你建议的下一步。用简洁中文分条回答，不要贴大段代码。"
 
-// registerChatRoutes 注册项目对话入口。
+// registerChatRoutes 注册项目对话入口（开对话 + 读写该项目的对话偏好）。
 func (a *App) registerChatRoutes(mux *http.ServeMux) {
+	// GET：读该项目的对话偏好，界面用它回填 CLI / 启动模式下拉。
+	mux.HandleFunc("GET /api/v1/projects/chat/config", func(w http.ResponseWriter, r *http.Request) {
+		root, err := a.projectRoot(r.URL.Query().Get("root"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		pref := a.config.ChatPrefFor(root)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"root":  root,
+			"agent": pref.Agent,
+			"mode":  pref.Mode,
+		})
+	})
+
+	// POST /config：只保存偏好，不开对话（下拉改完立即落盘，下次新对话生效）。
+	mux.HandleFunc("POST /api/v1/projects/chat/config", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Root  string `json:"root"`
+			Agent string `json:"agent"`
+			Mode  string `json:"mode"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "请求体不是 JSON")
+			return
+		}
+		root, err := a.projectRoot(body.Root)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		pref := ChatPref{Agent: strings.TrimSpace(body.Agent), Mode: strings.TrimSpace(body.Mode)}
+		a.config.SetChatPref(root, pref)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "root": root, "agent": pref.Agent, "mode": pref.Mode})
+	})
+
 	mux.HandleFunc("POST /api/v1/projects/chat", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Root  string `json:"root"`
 			Agent string `json:"agent"`
+			Mode  string `json:"mode"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Root) == "" {
 			writeError(w, http.StatusBadRequest, "缺少 root")
@@ -37,7 +74,8 @@ func (a *App) registerChatRoutes(mux *http.ServeMux) {
 			writeError(w, http.StatusBadRequest, "没有可用的 CLI，请先在设置里安装或指定路径")
 			return
 		}
-		command := buildAgentCommand(agent.AgentDef, agent.Path, projectChatPrompt)
+		def, mode := chatCommandDef(a.config.CliOverridesSnapshot(), agent, strings.TrimSpace(body.Mode))
+		command := buildAgentCommand(def, agent.Path, projectChatPrompt)
 		session, err := a.sessions.Start(command, root)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -45,6 +83,8 @@ func (a *App) registerChatRoutes(mux *http.ServeMux) {
 		}
 		session.SetAgent(agent.ID)
 		session.SetTitle("项目对话 · " + baseName(root))
+		// 记住这次的选择，下次点「项目对话」直接沿用。
+		a.config.SetChatPref(root, ChatPref{Agent: agent.ID, Mode: mode})
 		// 位置参数型 CLI 直接把提示词带进命令行；其余等 TUI 起来后再输入。
 		if agent.Prompt != "positional" {
 			go a.pipes.injectPrompt(session.ID, projectChatPrompt, true)
@@ -52,9 +92,29 @@ func (a *App) registerChatRoutes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":      true,
 			"agent":   agent.ID,
+			"mode":    mode,
 			"session": session.Snapshot(),
 		})
 	})
+}
+
+// chatCommandDef 按「项目对话」选定的启动模式重算参数：
+// 用户给该 CLI 手填过参数时以手填为准，模式不再覆盖。
+func chatCommandDef(overrides map[string]CliOverride, agent AgentStatus, want string) (AgentDef, string) {
+	def := agent.AgentDef
+	mode := agent.Mode
+	want = strings.TrimSpace(want)
+	if want == "" || want == mode {
+		return def, mode
+	}
+	if len(overrides[agent.ID].Args) > 0 {
+		return def, mode
+	}
+	if m, ok := pickMode(def, want); ok {
+		def.Args = m.Args
+		return def, m.ID
+	}
+	return def, mode
 }
 
 // pickChatAgent 选项目对话用的 CLI：指定 > 该项目 TASK-01 配置 > Claude Code > 第一个可用。

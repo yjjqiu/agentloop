@@ -1,5 +1,6 @@
-// 项目资料看板：把当前项目的文档、任务产物、目录结构、依赖与 Git 状态汇总成一页。
-// 只读；与流水线（看板页）和终端互相独立。
+// 项目资料：挂在「项目对话」页右侧的只读面板。
+// 一页两层——先看分组列表，点条目进入文档预览，返回按钮回到列表。
+// 和 SOP 开发（右侧工作流面板）完全分开，这里不碰流水线状态。
 
 const docsState = {
   root: '',
@@ -7,6 +8,8 @@ const docsState = {
   file: '',
   loading: false,
   filter: '',
+  mode: 'list', // list | file
+  expanded: new Set(), // 已展开全部条目的分组
 };
 
 const docsApi = {
@@ -40,51 +43,69 @@ function docsSize(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// setDocsMode 在「列表」和「文档预览」之间切换，同一个面板里翻页。
+function setDocsMode(mode) {
+  docsState.mode = mode === 'file' ? 'file' : 'list';
+  const side = $('docsSide');
+  const view = $('docsView');
+  const back = $('docsBack');
+  if (side) side.hidden = docsState.mode === 'file';
+  if (view) view.hidden = docsState.mode !== 'file';
+  // 返回按钮常驻，只切禁用态，避免标题左右跳。
+  if (back) {
+    back.disabled = docsState.mode !== 'file';
+    back.classList.toggle('off', docsState.mode !== 'file');
+  }
+}
+
 async function renderDocs(force) {
   const root = (typeof state !== 'undefined' && state.active) || '';
   const side = $('docsSide');
   const view = $('docsView');
   if (!side || !view) return;
+  const pathEl = $('docsPath');
+  if (pathEl) {
+    pathEl.textContent = root;
+    pathEl.title = root;
+  }
   if (!root) {
     side.innerHTML = '<div class="docs-empty">先选择一个项目</div>';
-    view.innerHTML = '';
+    docsState.data = null;
+    docsState.root = '';
+    setDocsMode('list');
     return;
   }
-  const nameEl = $('docsName');
-  const pathEl = $('docsPath');
-  const project = (typeof currentProject === 'function' ? currentProject() : null);
-  if (nameEl) nameEl.textContent = project?.name || root.split(/[\\/]/).pop();
-  if (pathEl) pathEl.textContent = root;
 
-  if (force || docsState.root !== root || !docsState.data) {
+  const switched = docsState.root !== root;
+  if (switched) {
+    docsState.data = null;
+    docsState.file = '';
+    docsState.expanded = new Set();
+    setDocsMode('list');
+  }
+  if (force || switched || !docsState.data) {
     docsState.root = root;
     docsState.loading = true;
-    side.innerHTML = '<div class="docs-empty">正在扫描项目资料…</div>';
+    if (!docsState.data) side.innerHTML = '<div class="docs-empty">正在扫描项目资料…</div>';
     try {
       docsState.data = await docsApi.overview(root);
     } catch (error) {
-      side.innerHTML = `<div class="docs-empty">读取失败：${docsEscape(error.message || error)}</div>`;
       docsState.loading = false;
+      docsState.data = null;
+      side.innerHTML = `<div class="docs-empty">读取失败：${docsEscape(error.message || error)}</div>`;
+      setDocsMode('list');
       return;
     }
     docsState.loading = false;
   }
 
-  const data = docsState.data;
-  const target = docsState.file && data.docs.some((doc) => doc.path === docsState.file)
-    ? docsState.file
-    : (data.manifests.find((doc) => doc.name === 'README.md')?.path
-      || data.docs.find((doc) => doc.rel === 'README.md')?.path
-      || data.docs[0]?.path
-      || '');
-  // 先定下要展示的文件，左栏渲染时才能把对应条目标成选中。
-  docsState.file = target;
-  renderDocsSide();
-  if (target) {
-    await showDocFile(target);
-  } else {
-    renderDocsOverview();
+  // 已经翻到某份文档时不打断阅读，等用户点返回再回列表。
+  if (docsState.mode === 'file' && docsState.file) {
+    renderDocsSide();
+    return;
   }
+  setDocsMode('list');
+  renderDocsSide();
 }
 
 function docsMatches(item, query) {
@@ -120,8 +141,6 @@ function renderDocsSide() {
   overview.addEventListener('click', () => {
     docsState.file = '';
     renderDocsOverview();
-    side.querySelectorAll('.docs-item').forEach((el) => el.classList.remove('active'));
-    overview.classList.add('active');
   });
   side.appendChild(overview);
 
@@ -144,12 +163,12 @@ function renderDocsSide() {
   const focusGroup = groups.get('根目录') || [];
   if (focusGroup.length) {
     section('文档 · 根目录', focusGroup.length);
-    for (const doc of focusGroup) side.appendChild(docsFileItem(doc, 'docs-doc'));
+    appendDocsGroup(side, '根目录', focusGroup);
   }
   for (const [group, items] of groups) {
     if (group === '根目录') continue;
     section(`文档 · ${group}`, items.length);
-    for (const doc of items) side.appendChild(docsFileItem(doc, 'docs-doc'));
+    appendDocsGroup(side, group, items);
   }
 
   // 4) 任务产物
@@ -165,8 +184,6 @@ function renderDocsSide() {
       btn.addEventListener('click', () => {
         docsState.file = '';
         renderArtifactDetail(artifact);
-        side.querySelectorAll('.docs-item').forEach((el) => el.classList.remove('active'));
-        btn.classList.add('active');
       });
       side.appendChild(btn);
     }
@@ -184,6 +201,29 @@ function renderDocsSide() {
   }
 }
 
+function docsClearActive() {
+  $('docsSide')?.querySelectorAll('.docs-item').forEach((el) => el.classList.remove('active'));
+}
+
+// 单个分组默认只列前 8 项，右侧面板本来就窄，长列表留给「展开」。
+const DOCS_GROUP_LIMIT = 8;
+
+function appendDocsGroup(side, group, items) {
+  const expanded = docsState.expanded.has(group);
+  const limit = expanded ? items.length : Math.min(items.length, DOCS_GROUP_LIMIT);
+  for (let i = 0; i < limit; i += 1) side.appendChild(docsFileItem(items[i], 'docs-doc'));
+  if (expanded || items.length <= DOCS_GROUP_LIMIT) return;
+  const more = document.createElement('button');
+  more.type = 'button';
+  more.className = 'docs-more';
+  more.textContent = `展开其余 ${items.length - DOCS_GROUP_LIMIT} 项`;
+  more.addEventListener('click', () => {
+    docsState.expanded.add(group);
+    renderDocsSide();
+  });
+  side.appendChild(more);
+}
+
 function docsFileItem(doc, kind) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -193,10 +233,12 @@ function docsFileItem(doc, kind) {
   btn.innerHTML = `<span class="docs-item-name ${kind}">${docsEscape(doc.rel || doc.name)}</span>
     <span class="docs-item-meta">${docsSize(doc.size)} · ${docsRelTime(doc.modTime)}</span>`;
   btn.addEventListener('click', () => {
-    $('docsSide').querySelectorAll('.docs-item').forEach((el) => el.classList.remove('active'));
+    docsClearActive();
     btn.classList.add('active');
     showDocFile(doc.path).catch((error) => {
-      $('docsView').innerHTML = `<div class="docs-empty">${docsEscape(error.message || error)}</div>`;
+      const view = $('docsView');
+      if (view) view.innerHTML = `<div class="docs-empty">${docsEscape(error.message || error)}</div>`;
+      setDocsMode('file');
     });
   });
   return btn;
@@ -205,6 +247,7 @@ function docsFileItem(doc, kind) {
 async function showDocFile(path) {
   const view = $('docsView');
   if (!view) return;
+  setDocsMode('file');
   view.innerHTML = '<div class="docs-empty">读取中…</div>';
   const file = await docsApi.file(path);
   docsState.file = path;
@@ -259,6 +302,8 @@ function docsStageRank(key) {
 function renderArtifactDetail(artifact) {
   const view = $('docsView');
   if (!view) return;
+  setDocsMode('file');
+  docsState.file = '';
   const rows = Object.entries(artifact.stages || {})
     .sort((a, b) => docsStageRank(a[0]) - docsStageRank(b[0]) || a[0].localeCompare(b[0]))
     .map(([key, status]) => `<div class="docs-stage"><span>${docsEscape(key)}</span><b class="docs-stage-${docsEscape(status)}">${docsEscape(DOCS_STAGE_LABEL[status] || status)}</b></div>`)
@@ -274,14 +319,16 @@ function renderArtifactDetail(artifact) {
       <div class="docs-kv"><span>运行模式</span><b>${docsEscape(artifact.runtimeMode || '—')}</b></div>
       <div class="docs-kv"><span>最近事件</span><b>${docsEscape(artifact.lastEvent || '—')}</b></div>
       <div class="docs-stages">${rows || '<div class="docs-empty">还没有阶段记录</div>'}</div>
-      <p class="docs-hint">阶段详情与重跑请回到「看板」页操作。</p>
+      <p class="docs-hint">阶段详情与重跑请回到「SOP 开发 → 工作流」操作。</p>
     </div>`;
+  view.scrollTop = 0;
 }
 
 function renderDocsOverview() {
   const view = $('docsView');
   const data = docsState.data;
   if (!view || !data) return;
+  setDocsMode('file');
   const git = data.git;
   const commits = (git?.commits || [])
     .map((c) => `<li><code>${docsEscape(c.sha)}</code><span>${docsEscape(c.subject)}</span><em>${docsEscape(c.when)}</em></li>`)
@@ -304,23 +351,28 @@ function renderDocsOverview() {
         <div class="docs-kpi"><b>${git ? git.dirty : '—'}</b><span>处改动</span></div>
         <div class="docs-kpi"><b>${data.tree.length}</b><span>项顶层内容</span></div>
       </div>
-      ${git ? `<h3 class="docs-h">最近提交</h3><ul class="docs-log">${commits || '<li>还没有提交</li>'}</ul>` : '<p class="docs-hint">这个目录不是 Git 仓库，资料看板只展示文件。</p>'}
+      ${git ? `<h3 class="docs-h">最近提交</h3><ul class="docs-log">${commits || '<li>还没有提交</li>'}</ul>` : '<p class="docs-hint">这个目录不是 Git 仓库，资料面板只展示文件。</p>'}
       ${changed ? `<h3 class="docs-h">未提交改动</h3><ul class="docs-log">${changed}</ul>` : ''}
     </div>`;
+  view.scrollTop = 0;
 }
 
 function bindDocsUI() {
-  const docsBtn = $('openDocs');
-  if (docsBtn) docsBtn.addEventListener('click', () => switchTab('docs'));
   const back = $('docsBack');
-  if (back) back.addEventListener('click', () => switchTab('board'));
+  if (back) {
+    back.addEventListener('click', () => {
+      docsState.file = '';
+      setDocsMode('list');
+      renderDocsSide();
+    });
+  }
   const refresh = $('docsRefresh');
-  if (refresh) refresh.addEventListener('click', () => renderDocs(true).catch(() => {}));
+  if (refresh) refresh.addEventListener('click', () => { renderDocs(true).catch(() => {}); });
   const filter = $('docsFilter');
   if (filter) {
     filter.addEventListener('input', () => {
       docsState.filter = filter.value.trim();
-      renderDocsSide();
+      if (docsState.mode === 'list') renderDocsSide();
     });
   }
 }

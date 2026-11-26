@@ -15,6 +15,12 @@ import (
 // 项目默认指向仓库里的 LoopForge Local 入口（Windows），可在配置里覆盖；
 // 其它平台没有约定路径，默认留空，见 localbin_unix.go。
 
+// ChatPref 是某个项目「项目对话」的启动偏好：用哪款 CLI、哪种启动模式。
+type ChatPref struct {
+	Agent string `json:"agent,omitempty"`
+	Mode  string `json:"mode,omitempty"`
+}
+
 // CliOverride 是某个 CLI 的本地覆盖设置（路径 / 默认参数 / npm 包名 / 是否启用）。
 type CliOverride struct {
 	Path    string   `json:"path,omitempty"`
@@ -34,6 +40,7 @@ type Config struct {
 	LocalBin     string                    `json:"localBin"`
 	Pipelines    map[string]PipelineConfig `json:"pipelines,omitempty"`
 	CliOverrides map[string]CliOverride    `json:"cliOverrides,omitempty"`
+	ChatPrefs    map[string]ChatPref       `json:"chatPrefs,omitempty"`   // 项目路径 → 项目对话偏好
 	AuthToken    string                    `json:"authToken,omitempty"`   // 对外监听时的访问令牌
 	GitHubToken  string                    `json:"githubToken,omitempty"` // 私有仓库查更新用的只读 token
 }
@@ -63,6 +70,9 @@ func LoadConfig(dir string) *Config {
 	}
 	if cfg.CliOverrides == nil {
 		cfg.CliOverrides = map[string]CliOverride{}
+	}
+	if cfg.ChatPrefs == nil {
+		cfg.ChatPrefs = map[string]ChatPref{}
 	}
 	return cfg
 }
@@ -107,6 +117,34 @@ func (c *Config) SetAuthToken(token string) {
 	defer c.mu.Unlock()
 	c.AuthToken = token
 	c.saveLocked()
+}
+
+// ChatPrefFor 返回某个项目保存的项目对话偏好（可能为空）。
+func (c *Config) ChatPrefFor(root string) ChatPref {
+	key := chatPrefKey(root)
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.ChatPrefs[key]
+}
+
+// SetChatPref 保存某个项目的项目对话偏好并立即落盘。
+func (c *Config) SetChatPref(root string, pref ChatPref) {
+	key := chatPrefKey(root)
+	if key == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ChatPrefs == nil {
+		c.ChatPrefs = map[string]ChatPref{}
+	}
+	c.ChatPrefs[key] = pref
+	c.saveLocked()
+}
+
+// chatPrefKey 统一项目路径写法，Windows 下大小写不同也算同一个项目。
+func chatPrefKey(root string) string {
+	return strings.ToLower(filepath.Clean(strings.TrimSpace(root)))
 }
 
 // existsProjects 过滤掉已经不存在的目录。

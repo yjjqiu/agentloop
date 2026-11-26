@@ -287,3 +287,58 @@
   .docs-head { flex-direction: column; align-items: flex-start; gap: 12px; }
   .docs-body { grid-template-columns: 1fr; grid-template-rows: 220px minmax(0, 1fr); }
 }
+/* —— 右侧资料面板（项目对话页）：同一个面板里翻「列表 ↔ 预览」 —— */
+.panel-docs { width: 420px; min-width: 340px; max-width: 560px; }
+.docs-filterbar {
+  flex: none;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.docs-filterbar .docs-filter { width: 100%; height: 28px; background: var(--surface-2); }
+.panel-docs .docs-body { display: block; overflow: hidden; }
+#chatDocs .docs-side {
+  height: 100%;
+  overflow: auto;
+  padding: 8px 8px 16px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+#chatDocs .docs-side[hidden] { display: none; }
+#chatDocs .docs-view {
+  height: 100%;
+  overflow: auto;
+  padding: 16px 16px 26px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+#chatDocs .docs-view[hidden] { display: none; }
+#chatDocs .docs-view-name { font-size: 14px; }
+#chatDocs .docs-view-body { font-size: 12.5px; }
+#chatDocs .docs-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+#chatDocs .docs-kpi { padding: 9px 11px; }
+#chatDocs .docs-kpi b { font-size: 17px; }
+#chatDocs .docs-item-meta { font-size: 10px; }
+@media (max-width: 1180px) {
+  .panel-docs { width: 360px; min-width: 300px; }
+}
+
+/* 分组折叠后的「展开」按钮 */
+.docs-more {
+  margin: 2px 4px 6px;
+  padding: 5px 8px;
+  border: 1px dashed var(--line-2);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  transition: color .12s, border-color .12s;
+}
+.docs-more:hover { color: var(--accent); border-color: rgba(var(--accent-rgb), .4); }
+/* 返回按钮在列表态禁用但不消失，避免标题左右跳 */
+.panel-head .icon-btn.off { opacity: .28; cursor: default; }

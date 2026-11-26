@@ -6,9 +6,9 @@
 <title>AgentDeck</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="vendor/xterm.css">
-<link rel="stylesheet" href="app.css?v=0.3.6">
-<link rel="stylesheet" href="board.css?v=0.3.6">
-<link rel="stylesheet" href="docs.css?v=0.3.6">
+<link rel="stylesheet" href="app.css?v=0.3.7">
+<link rel="stylesheet" href="board.css?v=0.3.7">
+<link rel="stylesheet" href="docs.css?v=0.3.7">
 </head>
 <body>
 <div class="app">
@@ -82,12 +82,21 @@
           <span class="proj-badge" id="pbBadge"></span>
           <span class="pb-name" id="pbName">未选择项目</span>
           <span class="pb-path" id="pbPath"></span>
-          <button id="backToBoard" class="btn mini ghost" type="button" hidden>← 看板</button>
-          <button id="openChat" class="btn mini" type="button" hidden title="开一个终端读项目现状，走对话不走流水线">项目对话</button>
-          <button id="openDocs" class="btn mini ghost" type="button" hidden>资料</button>
+          <div class="seg" id="sopTabs" role="tablist" aria-label="SOP 开发视图">
+            <button class="seg-btn active" type="button" data-tab="terminal" role="tab">终端</button>
+            <button class="seg-btn" type="button" data-tab="board" role="tab">工作流</button>
+          </div>
         </div>
 
         <div class="term-card" hidden>
+          <div class="chat-bar" id="chatBar" hidden>
+            <span class="chat-tag">项目对话</span>
+            <select id="chatCli" class="chat-select" title="项目对话使用的终端 CLI"></select>
+            <select id="chatMode" class="chat-select" title="启动模式"></select>
+            <span class="chat-hint" id="chatHint">改完点「新对话」生效</span>
+            <span class="term-spacer"></span>
+            <button id="chatNew" class="btn mini" type="button">新对话</button>
+          </div>
           <div class="term-bar">
             <span class="term-ava" id="termAva"></span>
             <span class="term-dot" id="termDot"></span>
@@ -209,23 +218,6 @@
           </section>
         </section>
 
-        <section class="docs-panel" id="projectDocs" hidden>
-          <header class="docs-head">
-            <div class="docs-title">
-              <div class="docs-eyebrow">项目资料</div>
-              <h2 id="docsName">—</h2>
-              <p class="docs-sub" id="docsPath"></p>
-            </div>
-            <div class="docs-actions">
-              <input id="docsFilter" class="docs-filter" type="search" spellcheck="false" placeholder="筛选文件…">
-              <button id="docsRefresh" class="btn mini ghost" type="button">刷新</button>
-              <button id="docsBack" class="btn mini ghost" type="button">← 看板</button>
-            </div>
-          </header>
-          <div class="docs-body">
-            <aside class="docs-side" id="docsSide"></aside>
-            <article class="docs-view" id="docsView"></article>
-          </div>
         </section>
       </div>
     </main>
@@ -264,6 +256,26 @@
           <button id="installClaude" class="btn mini" type="button">装到 Claude Code</button>
           <button id="installCodex" class="btn mini" type="button">装到 Codex</button>
         </span>
+      </div>
+    </section>
+
+    <section class="panel panel-docs" id="chatDocs" hidden>
+      <div class="panel-head">
+        <button id="docsBack" class="icon-btn" type="button" title="返回资料列表" disabled>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.6 5.6 8l4.4 4.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <span class="panel-title">项目资料</span>
+        <span class="panel-path" id="docsPath"></span>
+        <button id="docsRefresh" class="icon-btn" type="button" title="刷新资料">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.6V5.2h-2.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="docs-filterbar">
+        <input id="docsFilter" class="docs-filter" type="search" spellcheck="false" placeholder="筛选资料…">
+      </div>
+      <div class="docs-body" id="docsBody">
+        <aside class="docs-side" id="docsSide"></aside>
+        <article class="docs-view" id="docsView" hidden></article>
       </div>
     </section>
   </div>
@@ -586,10 +598,10 @@
 
 <script src="vendor/xterm.js"></script>
 <script src="vendor/addon-fit.js"></script>
-<script src="brand-logos.js?v=0.3.6"></script>
-<script src="avatars.js?v=0.3.6"></script>
-<script src="app.js?v=0.3.6"></script>
-<script src="board.js?v=0.3.6"></script>
-<script src="docs.js?v=0.3.6"></script>
+<script src="brand-logos.js?v=0.3.7"></script>
+<script src="avatars.js?v=0.3.7"></script>
+<script src="app.js?v=0.3.7"></script>
+<script src="board.js?v=0.3.7"></script>
+<script src="docs.js?v=0.3.7"></script>
 </body>
 </html>

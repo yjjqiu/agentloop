@@ -162,7 +162,9 @@ CLI 列表顶部有两个版本操作：
 | GET | `/api/v1/workflows?root=` | 扫 `artifacts/*/workflow-state.json` |
 | GET | `/api/v1/projects/overview?root=` | 项目资料看板：`{root,name,git{branch,dirty,changed[],commits[]},docs[],manifests[],artifacts[],tree[],scannedAt}`；`root` 必须是已登记项目 |
 | GET | `/api/v1/projects/file?path=` | 预览单个文本文件 `{path,name,size,modTime,content}`；限已登记项目内、≤512KB、非二进制 |
-| POST | `/api/v1/projects/chat` | 「项目对话」：在项目根目录开一个终端并注入现状调查提示词 `{root, agent?}`，返回 `{ok,agent,session}` |
+| POST | `/api/v1/projects/chat` | 「项目对话」：在项目根目录开一个终端并注入现状调查提示词 `{root, agent?, mode?}`，返回 `{ok,agent,mode,session}` |
+| GET | `/api/v1/projects/chat/config?root=` | 读该项目的项目对话偏好：`{root,agent,mode}`（没存过时为空） |
+| POST | `/api/v1/projects/chat/config` | 保存项目对话偏好 `{root,agent,mode}`，下次「新对话」按它启动 |
 | GET/POST | `/api/v1/config` | 读取/保存 `lastCwd`、`localBin` |
 | GET | `/api/v1/fs/list?path=` | 浏览器模式的目录浏览：`{path,parent,home,dirs[],roots[]}`，`roots` 是快捷入口（`/workspace` + 环境变量 `AGENTDECK_ROOTS` 里的路径）；隐藏目录不列，传绝对路径可直接进 |
 | POST | `/api/v1/fs/mkdir` | 新建单级目录 `{parent,name}`，返回 `{ok,path}`；名称不允许带 `/`、`\` |
@@ -298,16 +300,25 @@ docker run --rm --user root -v agentdeck_agentdeck-data:/data --entrypoint chown
 来源是 OrchestratorInc/agent-orchestrator 的 adapter 定义，改这个文件就能增删 CLI。
 新增的可选字段：`npm` 是安装 / 更新用的默认 npm 包名，`update` 是自更新命令的参数（如 pi 的 `["update"]`）。
 
-## 项目资料看板
+## 左边栏：每个项目两块
 
-看板管「开发」，资料页管「读项目」，两者互不依赖。项目标题栏的「资料」按钮打开一页只读视图：
+添加一个项目后，左栏这个项目下面固定有两块，互不干扰：
 
-- 左栏按组列出：概览（分支 / 改动数 / 任务数）、清单（README / CLAUDE.md / package.json /
+- **SOP 开发**：终端 + 工作流。只有当前项目会展开它的终端列表和工作流任务；
+  主区顶部两个页签在「终端」和「工作流」之间切换，终端页右侧是工作流面板。
+- **项目对话**：只读对话页，右侧固定是项目资料面板（列表 ↔ 预览两层，返回键回列表）。
+
+项目对话不建流水线、不写 `artifacts/`；SOP 开发右侧不显示资料，资料只出现在对话页。
+
+## 项目资料（项目对话页右侧）
+
+- 列表按组显示：概览（分支 / 改动数 / 任务数）、清单（README / CLAUDE.md / package.json /
   requirements.txt / go.mod / Dockerfile / compose / ecosystem.config.js 等）、
-  文档（`.md` / `.markdown`，按一级目录分组，深度 4、上限 300 份）、任务产物
+  文档（`.md` / `.markdown`，按一级目录分组，深度 4、上限 300 份；单组超过 8 份时折叠，
+  点「展开其余」看全部）、任务产物
   （`artifacts/<slug>/workflow-state.json` 的当前阶段与各阶段状态）、顶层结构（目录 + 条目数）
-- 右栏预览 Markdown（标题 / 列表 / 表格 / 行内代码 / 链接，先转义再上标签）；
-  「复制路径」把绝对路径塞进剪贴板
+- 点条目在同一个面板里翻到预览：Markdown 标题 / 列表 / 表格 / 行内代码 / 链接，
+  先转义再上标签；「复制路径」把绝对路径塞进剪贴板
 - 概览页给出文档数 / 任务数 / 改动数 / 顶层条目，以及最近 8 条提交和未提交改动
 - 扫描跳过 `.git`、`node_modules`、`venv`、`.next`、`dist`、`target` 等重目录；
   Git 命令统一加 `-c i18n.logOutputEncoding=UTF-8 -c core.quotepath=false`，
@@ -317,15 +328,18 @@ docker run --rm --user root -v agentdeck_agentdeck-data:/data --entrypoint chown
 
 ## 项目对话
 
-项目标题栏的「项目对话」按钮在项目根目录直接开一个 CLI 终端，第一句就是
-`project_chat.go` 里的 `projectChatPrompt`：先读 `artifacts/` 的 `workflow-state.json`、
-README/docs 的功能清单、git 最近提交，汇报进度和功能树，并明确要求先不改代码。
+在项目根目录直接开一个 CLI 终端，第一句就是 `project_chat.go` 里的 `projectChatPrompt`：
+先读 `artifacts/` 的 `workflow-state.json`、README/docs 的功能清单、git 最近提交，
+汇报进度和功能树，并明确要求先不改代码。
 
-- 选哪款 CLI：请求里指定 > 该项目 TASK-01 配的 CLI > Claude Code > 第一个可用的
+- 用哪款 CLI、哪种启动模式：对话页顶部两个下拉（CLI / 启动模式），改完立即落盘，
+  点「新对话」按新配置起一个；已有对话时再点左栏「项目对话」直接切回原来那个终端
+- 选择优先级：本次指定 > 该项目保存的偏好 > 该项目 TASK-01 配的 CLI > Claude Code >
+  第一个可用的；某款 CLI 在设置里手填过参数时以手填为准，启动模式不再覆盖
 - 位置参数型 CLI（`agents.json` 的 `prompt: positional`）把提示词直接带进命令行，
   其余等 TUI 起来后再注入
 - 只读：不写 `artifacts/`、不动 `workflow-state.json`、不参与流水线调度
-- 会话标题是「项目对话 · <项目名>」，和流水线派发的「阶段 · 任务」区分开
+- 会话标题是「项目对话 · <项目名>」，不出现在 SOP 开发的终端列表里，避免重复入口
 
 ## 终端上下文额度
 

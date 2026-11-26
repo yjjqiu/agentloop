@@ -501,14 +501,6 @@ kbd {
   color: var(--text-faint);
   font-family: var(--mono);
 }
-#backToBoard {
-  margin-left: auto;
-  height: 24px;
-  padding: 0 10px;
-  font-size: 11.5px;
-  color: var(--text-dim);
-}
-#backToBoard[hidden] { display: none; }
 .pipe-proj {
   height: 32px;
   padding: 0 10px;
@@ -1920,3 +1912,155 @@ a.btn { text-decoration: none; }
 }
 .auth-error { margin: 0 0 8px; color: var(--red); font-size: 12px; }
 .auth-card .field input { width: 100%; }
+
+/* ——————————————— 一级导航：SOP 开发 / 项目对话 ——————————————— */
+.rail-entry {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.rail-entry:hover { background: var(--hover); color: var(--text); }
+.rail-entry.active {
+  border-color: rgba(var(--accent-rgb), .3);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.rail-entry-icon {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: var(--surface-3);
+  color: var(--text-dim);
+}
+.rail-entry.active .rail-entry-icon { background: rgba(var(--accent-rgb), .18); color: var(--accent); }
+.rail-entry-icon svg { width: 14px; height: 14px; }
+.rail-entry-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.rail-entry-main b { font-size: 12.5px; font-weight: 650; }
+.rail-entry-main small {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 项目下级入口：项目对话 */
+.rail-child {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: calc(100% - 18px);
+  margin: 0 0 2px 18px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.rail-child:hover { background: var(--hover); color: var(--text); }
+.rail-child.active {
+  border-color: rgba(var(--accent-rgb), .28);
+  background: rgba(var(--accent-rgb), .08);
+  color: var(--text);
+}
+.rail-child-icon { display: inline-flex; flex: none; color: var(--text-faint); }
+.rail-child-icon svg { width: 13px; height: 13px; }
+.rail-child.active .rail-child-icon { color: var(--accent); }
+.rail-child-name { font-size: 12px; }
+
+/* 段控件：SOP 开发里的 终端 / 工作流 页签 */
+.seg {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-3);
+}
+.seg-btn {
+  height: 22px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+}
+.seg-btn:hover:not(.active) { color: var(--text); }
+.seg-btn.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+.seg-btn[disabled] { opacity: .45; cursor: default; }
+
+/* 项目对话工具条：CLI / 启动模式 / 新对话 */
+.chat-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.chat-bar[hidden] { display: none; }
+.chat-tag {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: rgba(var(--accent-rgb), .12);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 650;
+}
+.chat-select {
+  height: 24px;
+  max-width: 200px;
+  padding: 0 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 11.5px;
+  outline: none;
+}
+.chat-select:disabled { opacity: .55; }
+.chat-hint {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1200px) {
+  .chat-hint { display: none; }
+}
+
+/* 工具条上的提示不参与压缩，窄屏直接隐藏 */
+.chat-hint { flex: none; }
+
+/* SOP 开发下的终端 / 工作流列表：整体再缩进一级，看出从属关系 */
+.rail-group { display: flex; flex-direction: column; padding-left: 14px; }

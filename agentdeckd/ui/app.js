@@ -113,9 +113,9 @@ const api = {
   ).catch(() => {}),
   kill: (id) => req(`/api/v1/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(() => {}),
   sessionContext: (id) => req(`/api/v1/sessions/${encodeURIComponent(id)}/context`).catch(() => null),
-  projectChat: (root, agent) => req('/api/v1/projects/chat', {
+  projectChat: (root, options = {}) => req('/api/v1/projects/chat', {
     method: 'POST',
-    body: JSON.stringify(agent ? { root, agent } : { root }),
+    body: JSON.stringify({ root, ...options }),
   }),
   listDirs: (path) => req(`/api/v1/fs/list?path=${encodeURIComponent(path || '')}`),
   mkdirDir: (parent, name) => req('/api/v1/fs/mkdir', {
@@ -162,6 +162,7 @@ let clis = [];
 const state = {
   projects: [],
   active: '',
+  view: 'sop', // sop = 终端 + 工作流；chat = 项目对话
   selectedRun: '',
   selectedStage: '',
   timer: null,
@@ -449,18 +450,17 @@ const ICON = {
 
 function renderRail() {
   projListEl.innerHTML = '';
-  if (!state.projects.length) {
-    const hint = document.createElement('div');
-    hint.className = 'rail-empty';
-    hint.textContent = '还没有项目，点右上角 + 添加';
-    projListEl.appendChild(hint);
-    return;
-  }
+  const chatView = state.view === 'chat';
+  const active = state.projects.find((p) => p.path === state.active) || null;
 
+  // —— 每个项目下面固定两块：SOP 开发 / 项目对话 ——
+  if (!state.projects.length) {
+    projListEl.appendChild(note('还没有项目，点右上角 + 添加'));
+  }
   for (const project of state.projects) {
-    const active = project.path === state.active;
+    const isActive = project.path === state.active;
     const row = document.createElement('div');
-    row.className = `proj${active ? ' active' : ''}`;
+    row.className = `proj${isActive ? ' active' : ''}`;
     row.innerHTML = `
       <span class="proj-avatar"></span>
       <span class="proj-name"></span>
@@ -475,17 +475,10 @@ function renderRail() {
     row.addEventListener('click', async (event) => {
       if (event.target.classList.contains('proj-more')) return;
       if (project.path === state.active) {
-        // 已选中的项目：回到它的首页（看板）。
         if (typeof switchTab === 'function') switchTab('board');
         return;
       }
-      state.active = project.path;
-      state.selectedRun = '';
-      state.selectedStage = '';
-      await api.setActiveProject(project.path);
-      renderRail();
-      renderPanel();
-      // 项目首页就是该项目的看板。
+      await selectProject(project);
       if (typeof switchTab === 'function') switchTab('board');
     });
 
@@ -493,58 +486,38 @@ function renderRail() {
       event.stopPropagation();
       openProjectMenu(project, event.currentTarget);
     });
-
     projListEl.appendChild(row);
 
-    if (!active) continue;
+    // 子入口 1：SOP 开发（终端 + 工作流）
+    const sop = document.createElement('button');
+    sop.type = 'button';
+    sop.className = `rail-child${isActive && !chatView ? ' active' : ''}`;
+    sop.innerHTML = `
+      <span class="rail-child-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.6 4.4h10.8M2.6 8h7.4M2.6 11.6h4.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+      <span class="rail-child-name">SOP 开发</span>`;
+    sop.title = '终端 + 工作流：按阶段把需求跑成可交付的结果';
+    sop.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      await selectProject(project);
+      switchTab(boardState.tab === 'terminal' ? 'terminal' : 'board');
+    });
+    projListEl.appendChild(sop);
+    // 终端 / 工作流是 SOP 开发的下级，只在当前项目、当前处于 SOP 视图时展开。
+    if (isActive && !chatView) projListEl.appendChild(sopDetails(project));
 
-    // 终端：按 cwd 归属到项目
-    const mine = [...sessions.values()].filter((s) => isUnder(s.cwd, project.path));
-    projListEl.appendChild(subHead('终端'));
-    if (!mine.length) {
-      projListEl.appendChild(note('新建工作流或按 Ctrl T 后，这里会出现终端'));
-    }
-    for (const session of mine) {
-      projListEl.appendChild(termRow(session));
-    }
-
-    // 工作流：LoopForge 任务（排队 / 进行中 / 已完成都在这里）
-    projListEl.appendChild(subHead('工作流'));
-    if (!project.runs?.length) {
-      projListEl.appendChild(note('还没有工作流 · 点右侧新建流水线'));
-    }
-    for (const run of project.runs || []) {
-      const item = document.createElement('div');
-      item.className = `run${run.slug === state.selectedRun ? ' selected' : ''}`;
-      item.innerHTML = `
-        <span class="run-status"></span>
-        <span class="run-main">
-          <span class="run-line"><span class="run-title"></span><span class="run-time"></span></span>
-          <span class="run-track"></span>
-        </span>`;
-      item.querySelector('.run-status').innerHTML = ICON[run.status] || ICON.pending;
-      const title = item.querySelector('.run-title');
-      title.textContent = run.taskId || run.slug;
-      title.title = `${run.taskId || run.slug} · ${run.currentStage || ''}`;
-      item.querySelector('.run-time').textContent = relTime(run.updatedAt);
-      const track = item.querySelector('.run-track');
-      for (const stage of STAGES) {
-        const status = stageStatus(run, stage.key);
-        const seg = document.createElement('i');
-        seg.className = status;
-        seg.title = `${stage.label} · ${status}`;
-        track.appendChild(seg);
-      }
-      item.addEventListener('click', () => {
-        state.selectedRun = run.slug;
-        state.selectedStage = '';
-        renderRail();
-        renderPanel();
-        // 运行列表点开的是这个项目自己的看板。
-        if (typeof openRunBoard === 'function') openRunBoard(project.path, run.slug);
-      });
-      projListEl.appendChild(item);
-    }
+    // 子入口 2：项目对话（只读，右侧固定放资料）
+    const chat = document.createElement('button');
+    chat.type = 'button';
+    chat.className = `rail-child${isActive && chatView ? ' active' : ''}`;
+    chat.innerHTML = `
+      <span class="rail-child-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 3.6h9.6a1.6 1.6 0 0 1 1.6 1.6v4.6a1.6 1.6 0 0 1-1.6 1.6H7.4L4.4 13.6v-2.2h-.7a1.6 1.6 0 0 1-1.6-1.6V5.2a1.6 1.6 0 0 1 1.6-1.6z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
+      <span class="rail-child-name">项目对话</span>`;
+    chat.title = '读项目现状、进度和功能树；不经过流水线，只读不改代码';
+    chat.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openProjectChat(project);
+    });
+    projListEl.appendChild(chat);
   }
 
   // 不属于任何项目的终端
@@ -557,6 +530,67 @@ function renderRail() {
       projListEl.appendChild(termRow(session));
     }
   }
+}
+
+// sopDetails 组装 SOP 开发下面的终端 / 工作流列表。
+// 项目对话有自己的入口，不在这里重复出现。
+function sopDetails(project) {
+  const group = document.createElement('div');
+  group.className = 'rail-group';
+
+  const mine = [...sessions.values()].filter(
+    (s) => isUnder(s.cwd, project.path) && !String(s.title || '').startsWith('项目对话'),
+  );
+  group.appendChild(subHead(`终端 ${mine.length || ''}`));
+  if (!mine.length) group.appendChild(note('Ctrl T 新建终端'));
+  for (const session of mine) group.appendChild(termRow(session));
+
+  group.appendChild(subHead(`工作流 ${project.runs?.length || ''}`));
+  if (!project.runs?.length) group.appendChild(note('在「工作流」页签新建流水线'));
+  for (const run of project.runs || []) {
+    const item = document.createElement('div');
+    item.className = `run${run.slug === state.selectedRun ? ' selected' : ''}`;
+    item.innerHTML = `
+      <span class="run-status"></span>
+      <span class="run-main">
+        <span class="run-line"><span class="run-title"></span><span class="run-time"></span></span>
+        <span class="run-track"></span>
+      </span>`;
+    item.querySelector('.run-status').innerHTML = ICON[run.status] || ICON.pending;
+    const title = item.querySelector('.run-title');
+    title.textContent = run.taskId || run.slug;
+    title.title = `${run.taskId || run.slug} · ${run.currentStage || ''}`;
+    item.querySelector('.run-time').textContent = relTime(run.updatedAt);
+    const track = item.querySelector('.run-track');
+    for (const stage of STAGES) {
+      const status = stageStatus(run, stage.key);
+      const seg = document.createElement('i');
+      seg.className = status;
+      seg.title = `${stage.label} · ${status}`;
+      track.appendChild(seg);
+    }
+    item.addEventListener('click', () => {
+      state.selectedRun = run.slug;
+      state.selectedStage = '';
+      renderRail();
+      renderPanel();
+      // 运行列表点开的是这个项目自己的工作流。
+      if (typeof openRunBoard === 'function') openRunBoard(project.path, run.slug);
+    });
+    group.appendChild(item);
+  }
+  return group;
+}
+
+// selectProject 把某个项目设为当前项目（左栏入口和对话入口共用）。
+async function selectProject(project) {
+  if (!project || project.path === state.active) return;
+  state.active = project.path;
+  state.selectedRun = '';
+  state.selectedStage = '';
+  await api.setActiveProject(project.path);
+  renderRail();
+  renderPanel();
 }
 
 // —— 终端头像 ——
@@ -596,7 +630,8 @@ function sessionAvatarHTML(session, size) {
 
 function termRow(session) {
   const item = document.createElement('div');
-  item.className = `term${session.id === activeId ? ' selected' : ''}`;
+  const isChat = String(session.title || '').startsWith('项目对话');
+  item.className = `term${session.id === activeId ? ' selected' : ''}${isChat ? ' chat' : ''}`;
   item.dataset.state = session.state || 'running';
   item.innerHTML = `
     <span class="term-ava"></span>
@@ -611,15 +646,12 @@ function termRow(session) {
   item.addEventListener('click', async () => {
     // 终端可能属于另一个项目，先把它所在的项目切为当前项目。
     const owner = state.projects.find((p) => isUnder(session.cwd, p.path));
-    if (owner && owner.path !== state.active) {
-      state.active = owner.path;
-      state.selectedRun = '';
-      state.selectedStage = '';
-      await api.setActiveProject(owner.path);
-      renderRail();
-      renderPanel();
+    await selectProject(owner);
+    // 项目对话的终端回到「项目对话」页（右侧是资料），其余终端进 SOP 开发。
+    if (isChat && owner && typeof openProjectChat === 'function') {
+      await openProjectChat(owner, session);
+      return;
     }
-    // 点左侧终端才进入终端对话页。
     if (typeof enterTerminal === 'function') enterTerminal(session.id);
     else setActive(session.id);
   });
@@ -1301,7 +1333,8 @@ function startContextPolling() {
   clearInterval(ctxTimer);
   ctxTimer = setInterval(() => {
     if (document.hidden) return;
-    if (typeof boardState !== 'undefined' && boardState.tab !== 'terminal') return;
+    const sopBoard = typeof boardState !== 'undefined' && state.view !== 'chat' && boardState.tab !== 'terminal';
+    if (sopBoard) return;
     refreshContext();
   }, 6000);
   refreshContext();
@@ -2272,15 +2305,16 @@ function setSettingsTab(tab) {
 }
 
 function setPanelVisible(visible) {
-  panel.hidden = !visible;
+  wfPanelPref = visible;
+  if (typeof applyView === 'function') applyView();
+  else panel.hidden = !visible;
   const box = $('wfPanelToggle');
   if (box) box.checked = visible;
-  requestAnimationFrame(fitActive);
 }
 
 function syncWfToggle() {
   const box = $('wfPanelToggle');
-  if (box) box.checked = !panel.hidden;
+  if (box) box.checked = wfPanelPref;
 }
 
 // —— 安装前补 npm 包名 ——
@@ -2411,19 +2445,145 @@ $('termFork').addEventListener('click', async () => {
   ctxWarned.delete(session.id);
   await createSession({ command: session.command, cwd: session.cwd, agent: session.agent || '' });
 });
-// 项目对话：只读项目现状，不进流水线、不写 artifacts。
-$('openChat').addEventListener('click', async () => {
+// —— 项目对话：左侧每个项目下的只读入口，右侧固定显示项目资料 ——
+// 和 SOP 开发完全分开：这里不建流水线、不写 artifacts，只读项目现状。
+const chatState = { root: '', agent: '', mode: '', clis: [], clisAt: 0 };
+
+function chatCliList() {
+  return (chatState.clis || []).filter((cli) => cli.path && cli.enabled !== false);
+}
+
+async function loadChatPrefs(root, force) {
+  chatState.root = root;
+  if (force || !chatState.clis.length || Date.now() - chatState.clisAt > 60000) {
+    chatState.clis = await api.listClis().catch(() => chatState.clis);
+    chatState.clisAt = Date.now();
+  }
+  const pref = await req(`/api/v1/projects/chat/config?root=${encodeURIComponent(root)}`).catch(() => null);
+  chatState.agent = (pref && pref.agent) || '';
+  chatState.mode = (pref && pref.mode) || '';
+  renderChatBar();
+}
+
+// renderChatBar 回填「用哪个 CLI / 哪种启动模式」两个下拉。
+function renderChatBar() {
+  const cliSel = $('chatCli');
+  const modeSel = $('chatMode');
+  if (!cliSel || !modeSel) return;
+  const list = chatCliList();
+  cliSel.innerHTML = '';
+  for (const cli of list) {
+    const opt = document.createElement('option');
+    opt.value = cli.id;
+    opt.textContent = cli.name || cli.id;
+    cliSel.appendChild(opt);
+  }
+  if (!list.some((cli) => cli.id === chatState.agent)) {
+    const preferred = list.find((cli) => cli.id === 'claude-code') || list[0];
+    chatState.agent = preferred ? preferred.id : '';
+  }
+  cliSel.value = chatState.agent;
+  cliSel.disabled = !list.length;
+  if (!list.length) {
+    modeSel.innerHTML = '<option value="">没有可用的 CLI</option>';
+    modeSel.disabled = true;
+    chatState.mode = '';
+    return;
+  }
+  const cli = list.find((item) => item.id === chatState.agent);
+  const modes = (cli && cli.modes) || [];
+  modeSel.innerHTML = '';
+  if (!modes.length) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = '默认启动';
+    modeSel.appendChild(opt);
+    modeSel.disabled = true;
+    chatState.mode = '';
+    return;
+  }
+  for (const mode of modes) {
+    const opt = document.createElement('option');
+    opt.value = mode.id;
+    opt.textContent = mode.note ? `${mode.label} · ${mode.note}` : mode.label;
+    modeSel.appendChild(opt);
+  }
+  modeSel.disabled = false;
+  if (!modes.some((mode) => mode.id === chatState.mode)) chatState.mode = cli.mode || modes[0].id;
+  modeSel.value = chatState.mode;
+}
+
+async function saveChatPref() {
   if (!state.active) return;
   try {
-    const result = await api.projectChat(state.active);
+    await req('/api/v1/projects/chat/config', {
+      method: 'POST',
+      body: JSON.stringify({ root: state.active, agent: chatState.agent, mode: chatState.mode }),
+    });
+    boardToast?.('项目对话设置已保存，新对话按这个配置启动');
+  } catch (error) {
+    boardToast?.(`保存失败：${error.message || error}`);
+  }
+}
+
+// openProjectChat 进入某个项目的对话页：已有对话就接着用，没有就开一个。
+async function openProjectChat(project, focusSession) {
+  if (!project) return;
+  await selectProject(project);
+  await loadChatPrefs(project.path);
+  state.view = 'chat';
+  let existing = focusSession || [...sessions.values()].find(
+    (item) => String(item.title || '').startsWith('项目对话') && isUnder(item.cwd, project.path),
+  );
+  if (existing && !sessions.has(existing.id)) {
+    const list = await api.sessions().catch(() => []);
+    const info = list.find((item) => item.id === existing.id);
+    if (info) attachSession(info, false);
+    existing = sessions.get(existing.id) || null;
+  }
+  if (typeof applyView === 'function') applyView();
+  if (existing) {
+    setActive(existing.id);
+    return;
+  }
+  await startProjectChat();
+}
+
+async function startProjectChat() {
+  if (!state.active) {
+    boardToast?.('先选择一个项目');
+    return;
+  }
+  const btn = $('chatNew');
+  if (btn) btn.disabled = true;
+  try {
+    const result = await api.projectChat(state.active, { agent: chatState.agent, mode: chatState.mode });
     if (result?.session) {
+      chatState.agent = result.agent || chatState.agent;
+      chatState.mode = result.mode || chatState.mode;
+      renderChatBar();
+      state.view = 'chat';
       attachSession(result.session);
-      if (typeof switchTab === 'function') switchTab('terminal');
+      if (typeof applyView === 'function') applyView();
     }
   } catch (error) {
     alert(`打开项目对话失败：${error.message || error}`);
+  } finally {
+    if (btn) btn.disabled = false;
   }
+}
+
+$('chatCli').addEventListener('change', () => {
+  chatState.agent = $('chatCli').value;
+  chatState.mode = '';
+  renderChatBar();
+  saveChatPref();
 });
+$('chatMode').addEventListener('change', () => {
+  chatState.mode = $('chatMode').value;
+  saveChatPref();
+});
+$('chatNew').addEventListener('click', () => startProjectChat());
 $('cancel').addEventListener('click', closeModal);
 $('create').addEventListener('click', createFromModal);
 $('pickDir').addEventListener('click', async () => {

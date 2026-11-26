@@ -3,7 +3,6 @@
 
 const boardState = {
   tab: 'board',
-  panelWasOpen: false,
   agents: [],
   pipelines: new Map(), // root -> {config, runs}
   tails: new Map(), // root|slug -> 最新终端输出
@@ -821,37 +820,43 @@ async function focusRunTerminal(root, slug) {
   }
 }
 
-// —— 项目内的三种页面：看板（项目首页）/ 终端会话 / 项目资料 ——
-function switchTab(tab) {
-  boardState.tab = tab;
-  document.querySelector('.term-card').hidden = tab !== 'terminal';
-  $('projectBoard').hidden = tab !== 'board';
-  const docsEl = $('projectDocs');
-  if (docsEl) docsEl.hidden = tab !== 'docs';
-  $('backToBoard').hidden = tab !== 'terminal' && tab !== 'docs';
-  const docsBtn = $('openDocs');
-  if (docsBtn) docsBtn.hidden = tab === 'docs';
-  const chatBtn = $('openChat');
-  if (chatBtn) chatBtn.hidden = !state.active;
-  // 看板/资料需要横向空间，切换时自动收起右侧工作流面板，切回终端再恢复。
-  const panelEl = document.getElementById('panel');
-  if (tab === 'board' || tab === 'docs') {
-    if (panelEl && !panelEl.hidden) {
-      boardState.panelWasOpen = true;
-      panelEl.hidden = true;
-    }
-    if (tab === 'board') {
-      renderBoard(true).catch(() => {});
-    } else if (typeof renderDocs === 'function') {
-      renderDocs(true).catch(() => {});
-    }
-  } else {
-    if (panelEl && boardState.panelWasOpen) {
-      panelEl.hidden = false;
-      boardState.panelWasOpen = false;
-    }
-    requestAnimationFrame(() => fitActive());
+// —— 两个一级视图 ——
+// SOP 开发：终端 + 工作流（右侧工作流面板）
+// 项目对话：对话终端 + 资料（右侧资料面板）
+// state.view 决定主区形态，boardState.tab 只在 SOP 视图内切换终端/工作流。
+let wfPanelPref = true; // 用户是否要显示右侧工作流面板（设置里可关）
+
+function applyView() {
+  const chat = state.view === 'chat';
+  const tab = boardState.tab === 'board' ? 'board' : 'terminal';
+  const chatBar = $('chatBar');
+  if (chatBar) chatBar.hidden = !chat;
+  const tabs = $('sopTabs');
+  if (tabs) tabs.hidden = chat;
+  document.querySelector('.term-card').hidden = chat ? false : tab !== 'terminal';
+  $('projectBoard').hidden = chat || tab !== 'board';
+  const docsEl = $('chatDocs');
+  if (docsEl) docsEl.hidden = !chat;
+  // 右侧只能有一个面板：SOP 终端页放工作流，项目对话页放资料。
+  panel.hidden = chat || tab === 'board' || !wfPanelPref;
+  document.querySelectorAll('#sopTabs .seg-btn').forEach((btn) => {
+    btn.classList.toggle('active', !chat && btn.dataset.tab === tab);
+    btn.disabled = chat;
+  });
+  if (typeof renderRail === 'function') renderRail();
+  requestAnimationFrame(() => fitActive());
+  if (chat) {
+    if (typeof renderDocs === 'function') renderDocs(false).catch(() => {});
+  } else if (tab === 'board') {
+    renderBoard(true).catch(() => {});
   }
+}
+
+// switchTab 切到 SOP 开发视图的某个页签。
+function switchTab(tab) {
+  boardState.tab = tab === 'board' ? 'board' : 'terminal';
+  state.view = 'sop';
+  applyView();
 }
 
 // enterTerminal 从左侧终端列表进入某个终端会话页。
@@ -884,7 +889,9 @@ function openRunBoard(root, slug) {
   renderBoard(true).catch(() => {});
 }
 
-$('backToBoard').addEventListener('click', () => switchTab('board'));
+document.querySelectorAll('#sopTabs .seg-btn').forEach((btn) => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
 
 $('newPipeline').addEventListener('click', async () => {
   $('pipeModal').hidden = false;
