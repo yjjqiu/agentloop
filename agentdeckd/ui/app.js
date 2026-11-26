@@ -448,38 +448,90 @@ const ICON = {
   pending: '<span class="run-icon pending"></span>',
 };
 
+// —— 项目收缩 / 展开 ——
+// 每个项目下面的「SOP 开发 / 项目对话」只有在展开时才出现，
+// 不用的项目可以先收起来，左栏就不会被一堆子菜单撑满。
+// 用户手动点过的项目会被记住（localStorage），没点过的默认只展开当前项目。
+const RAIL_COLLAPSED_KEY = 'agentdeck.railCollapsed';
+
+function loadRailCollapsed() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RAIL_COLLAPSED_KEY) || '{}');
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+let railCollapsed = loadRailCollapsed();
+
+function railCollapsedKey(path) {
+  return String(path || '').toLowerCase();
+}
+
+function isProjectCollapsed(project) {
+  const key = railCollapsedKey(project?.path);
+  if (Object.prototype.hasOwnProperty.call(railCollapsed, key)) return Boolean(railCollapsed[key]);
+  // 没有手动设置过：当前项目展开，其他项目收起。
+  return project?.path !== state.active;
+}
+
+function setProjectCollapsed(project, collapsed) {
+  if (!project) return;
+  railCollapsed[railCollapsedKey(project.path)] = Boolean(collapsed);
+  try {
+    localStorage.setItem(RAIL_COLLAPSED_KEY, JSON.stringify(railCollapsed));
+  } catch {
+    // 存不下就只影响下次打开，不影响本次交互。
+  }
+}
+
+const CARET_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.4 10.6 8 6 12.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 function renderRail() {
   projListEl.innerHTML = '';
   const chatView = state.view === 'chat';
   const active = state.projects.find((p) => p.path === state.active) || null;
 
-  // —— 每个项目下面固定两块：SOP 开发 / 项目对话 ——
+  // —— 每个项目下面固定两块：项目对话 / SOP 开发 ——
   if (!state.projects.length) {
     projListEl.appendChild(note('还没有项目，点右上角 + 添加'));
   }
   for (const project of state.projects) {
     const isActive = project.path === state.active;
+    const collapsed = isProjectCollapsed(project);
     const row = document.createElement('div');
     row.className = `proj${isActive ? ' active' : ''}`;
     row.innerHTML = `
+      <button class="proj-caret" type="button"></button>
       <span class="proj-avatar"></span>
       <span class="proj-name"></span>
       <span class="proj-count"></span>
       <button class="proj-more" type="button" title="移除项目">⋮</button>`;
+    const caret = row.querySelector('.proj-caret');
+    caret.innerHTML = CARET_SVG;
+    caret.classList.toggle('open', !collapsed);
+    caret.title = collapsed ? '展开子菜单' : '收起子菜单';
+    caret.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     const avatar = row.querySelector('.proj-avatar');
     avatar.textContent = String(project.name).slice(0, 1).toUpperCase();
     avatar.style.background = avatarColor(project.name);
     row.querySelector('.proj-name').textContent = project.name;
     row.querySelector('.proj-count').textContent = project.runs?.length ? String(project.runs.length) : '';
 
+    caret.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setProjectCollapsed(project, !collapsed);
+      renderRail();
+    });
+
+    row.title = '进入项目对话';
     row.addEventListener('click', async (event) => {
-      if (event.target.classList.contains('proj-more')) return;
-      if (project.path === state.active) {
-        if (typeof switchTab === 'function') switchTab('board');
-        return;
-      }
-      await selectProject(project);
-      if (typeof switchTab === 'function') switchTab('board');
+      if (event.target.closest('.proj-caret') || event.target.classList.contains('proj-more')) return;
+      // 点收起状态的项目：先展开，让它的两个入口露出来。
+      if (collapsed) setProjectCollapsed(project, false);
+      // 点项目名默认进「项目对话」，和点下面的项目对话入口一致。
+      await openProjectChat(project);
     });
 
     row.querySelector('.proj-more').addEventListener('click', (event) => {
@@ -488,7 +540,23 @@ function renderRail() {
     });
     projListEl.appendChild(row);
 
-    // 子入口 1：SOP 开发（终端 + 工作流）
+    if (collapsed) continue;
+
+    // 子入口 1：项目对话（只读，右侧固定放资料）
+    const chat = document.createElement('button');
+    chat.type = 'button';
+    chat.className = `rail-child${isActive && chatView ? ' active' : ''}`;
+    chat.innerHTML = `
+      <span class="rail-child-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 3.6h9.6a1.6 1.6 0 0 1 1.6 1.6v4.6a1.6 1.6 0 0 1-1.6 1.6H7.4L4.4 13.6v-2.2h-.7a1.6 1.6 0 0 1-1.6-1.6V5.2a1.6 1.6 0 0 1 1.6-1.6z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
+      <span class="rail-child-name">项目对话</span>`;
+    chat.title = '读项目现状、进度和功能树；不经过流水线，只读不改代码';
+    chat.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openProjectChat(project);
+    });
+    projListEl.appendChild(chat);
+
+    // 子入口 2：SOP 开发（终端 + 工作流）
     const sop = document.createElement('button');
     sop.type = 'button';
     sop.className = `rail-child${isActive && !chatView ? ' active' : ''}`;
@@ -504,20 +572,6 @@ function renderRail() {
     projListEl.appendChild(sop);
     // 终端 / 工作流是 SOP 开发的下级，只在当前项目、当前处于 SOP 视图时展开。
     if (isActive && !chatView) projListEl.appendChild(sopDetails(project));
-
-    // 子入口 2：项目对话（只读，右侧固定放资料）
-    const chat = document.createElement('button');
-    chat.type = 'button';
-    chat.className = `rail-child${isActive && chatView ? ' active' : ''}`;
-    chat.innerHTML = `
-      <span class="rail-child-icon"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.2 3.6h9.6a1.6 1.6 0 0 1 1.6 1.6v4.6a1.6 1.6 0 0 1-1.6 1.6H7.4L4.4 13.6v-2.2h-.7a1.6 1.6 0 0 1-1.6-1.6V5.2a1.6 1.6 0 0 1 1.6-1.6z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg></span>
-      <span class="rail-child-name">项目对话</span>`;
-    chat.title = '读项目现状、进度和功能树；不经过流水线，只读不改代码';
-    chat.addEventListener('click', (event) => {
-      event.stopPropagation();
-      openProjectChat(project);
-    });
-    projListEl.appendChild(chat);
   }
 
   // 不属于任何项目的终端

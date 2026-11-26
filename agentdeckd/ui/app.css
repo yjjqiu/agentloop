@@ -289,9 +289,9 @@ kbd {
 /* 项目行 */
 .proj {
   display: grid;
-  grid-template-columns: 18px 1fr auto 18px;
+  grid-template-columns: 12px 18px 1fr auto 18px;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   height: 32px;
   padding: 0 6px;
   border-radius: var(--r-md);
@@ -302,6 +302,25 @@ kbd {
 }
 .proj:hover { background: var(--hover); color: var(--text); }
 .proj.active { background: var(--accent-soft); color: var(--text); }
+
+/* 收缩 / 展开箭头：默认朝右，展开时转到朝下 */
+.proj-caret {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: none;
+  background: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: transform .16s ease, color .12s;
+}
+.proj-caret svg { width: 10px; height: 10px; display: block; }
+.proj-caret.open { transform: rotate(90deg); }
+.proj:hover .proj-caret { color: var(--text-dim); }
+.proj-caret:hover { color: var(--text); }
 
 .proj-avatar {
   width: 18px;
@@ -1963,8 +1982,8 @@ a.btn { text-decoration: none; }
   display: flex;
   align-items: center;
   gap: 7px;
-  width: calc(100% - 18px);
-  margin: 0 0 2px 18px;
+  width: calc(100% - 22px);
+  margin: 0 0 2px 22px;
   padding: 5px 8px;
   border: 1px solid transparent;
   border-radius: var(--r-md);
@@ -2063,4 +2082,4 @@ a.btn { text-decoration: none; }
 .chat-hint { flex: none; }
 
 /* SOP 开发下的终端 / 工作流列表：整体再缩进一级，看出从属关系 */
-.rail-group { display: flex; flex-direction: column; padding-left: 14px; }
+.rail-group { display: flex; flex-direction: column; padding-left: 18px; }
