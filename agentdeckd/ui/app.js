@@ -99,6 +99,7 @@ const api = {
   saveCli: (payload) => req('/api/v1/clis/config', { method: 'POST', body: JSON.stringify(payload) }),
   resetCli: (id) => req('/api/v1/clis/reset', { method: 'POST', body: JSON.stringify({ id }) }),
   installLocal: (payload) => req('/api/v1/install', { method: 'POST', body: JSON.stringify(payload) }),
+  sysinfo: () => req('/api/v1/sysinfo'),
   sessions: () => req('/api/v1/sessions').then((r) => r.sessions || []),
   spawn: (options) => req('/api/v1/sessions', { method: 'POST', body: JSON.stringify(options) })
     .then((r) => ({ ok: true, ...r.session }))
@@ -1259,6 +1260,58 @@ async function refresh(force = false) {
   fitActive();
 }
 
+// —— 顶栏资源小插件（内存 / 磁盘）——
+function fmtGB(bytes) {
+  const gb = Number(bytes) / (1024 ** 3);
+  if (!Number.isFinite(gb) || gb <= 0) return '0';
+  return gb >= 100 ? gb.toFixed(0) : gb.toFixed(1);
+}
+
+function sysTone(el, pct) {
+  if (!el) return;
+  el.classList.toggle('warn', pct >= 80 && pct < 92);
+  el.classList.toggle('hot', pct >= 92);
+}
+
+function paintSysMeter(data) {
+  const meter = $('sysMeter');
+  if (!meter || !data || !data.mem || !data.disk) return;
+  const mem = data.mem;
+  const disk = data.disk;
+  const memPct = mem.total ? Math.round(mem.percent || 0) : 0;
+  const diskPct = disk.total ? Math.round(disk.percent || 0) : 0;
+
+  $('sysMemFill').style.width = `${Math.min(100, memPct)}%`;
+  $('sysDiskFill').style.width = `${Math.min(100, diskPct)}%`;
+  $('sysMemPct').textContent = mem.total ? `${memPct}%` : '—';
+  $('sysDiskPct').textContent = disk.total ? `${diskPct}%` : '—';
+  sysTone($('sysMemMetric'), memPct);
+  sysTone($('sysDiskMetric'), diskPct);
+
+  const lines = [];
+  if (mem.total) {
+    lines.push(`内存 ${fmtGB(mem.used)} / ${fmtGB(mem.total)} GB · 可用 ${fmtGB(mem.available)} GB`);
+  }
+  if (disk.total) {
+    lines.push(`磁盘 ${fmtGB(disk.used)} / ${fmtGB(disk.total)} GB · 剩余 ${fmtGB(disk.free)} GB`);
+    if (disk.path) lines.push(disk.path);
+  }
+  meter.title = lines.join('\n');
+  meter.hidden = false;
+}
+
+async function refreshSysMeter() {
+  const data = await api.sysinfo().catch(() => null);
+  if (data) paintSysMeter(data);
+}
+
+function startSysPolling() {
+  refreshSysMeter();
+  setInterval(() => {
+    if (!document.hidden) refreshSysMeter();
+  }, 10000);
+}
+
 // —— 终端 ——
 function makeTerminal(session) {
   const host = document.createElement('div');
@@ -1499,7 +1552,7 @@ async function restartActive() {
   if (isChatSession(session) && typeof startProjectChat === 'function') {
     api.kill(session.id);
     removeSession(session.id);
-    await startProjectChat();
+    await startProjectChat(true);
     return;
   }
   const { cwd, agent } = session;
@@ -2575,7 +2628,7 @@ $('termFork').addEventListener('click', async () => {
   ctxWarned.delete(session.id);
   // 项目对话里的「换新终端」等于开一段新对话，别把人甩到 SOP 开发去。
   if (isChatSession(session) && typeof startProjectChat === 'function') {
-    await startProjectChat();
+    await startProjectChat(true);
     return;
   }
   await createSession({
@@ -3060,7 +3113,7 @@ async function openProjectChat(project, focusSession) {
   await startProjectChat();
 }
 
-async function startProjectChat() {
+async function startProjectChat(fresh = false) {
   if (!state.active) {
     boardToast?.('先选择一个项目');
     return;
@@ -3068,7 +3121,7 @@ async function startProjectChat() {
   const btn = $('chatNew');
   if (btn) btn.disabled = true;
   try {
-    let result = await api.projectChat(state.active, { agent: chatState.agent, mode: chatState.mode });
+    let result = await api.projectChat(state.active, { agent: chatState.agent, mode: chatState.mode, fresh });
     // 这个项目还没选过「发不发提示词」，先问一次，别擅自发。
     if (result && result.needChoice) {
       const choice = await askChatPrompt(result.prompt);
@@ -3078,6 +3131,7 @@ async function startProjectChat() {
         mode: chatState.mode,
         sendPrompt: choice.send,
         remember: choice.remember,
+        fresh,
       });
     }
     if (result?.session) {
@@ -3087,6 +3141,7 @@ async function startProjectChat() {
       state.view = 'chat';
       attachSession(result.session);
       if (typeof applyView === 'function') applyView();
+      if (result.resumed) boardToast?.('已接着上次的对话继续');
     }
   } catch (error) {
     alert(`打开项目对话失败：${error.message || error}`);
@@ -3144,7 +3199,7 @@ $('chatMode').addEventListener('change', () => {
   chatState.mode = $('chatMode').value;
   saveChatPref();
 });
-$('chatNew').addEventListener('click', () => startProjectChat());
+$('chatNew').addEventListener('click', () => startProjectChat(true));
 $('cancel').addEventListener('click', closeModal);
 $('create').addEventListener('click', createFromModal);
 $('pickDir').addEventListener('click', async () => {
@@ -3444,10 +3499,14 @@ window.addEventListener('resize', () => requestAnimationFrame(fitActive));
     refresh().catch(() => {});
   }, 8000);
   startContextPolling();
+  startSysPolling();
   // 页面切走时断掉终端流，回来再重放，后台标签页不再空转。
   document.addEventListener('visibilitychange', () => {
     syncStreams();
-    if (!document.hidden) refresh().catch(() => {});
+    if (!document.hidden) {
+      refresh().catch(() => {});
+      refreshSysMeter();
+    }
   });
 
   const demo = params.get('demo');

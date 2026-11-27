@@ -158,6 +158,7 @@ CLI 列表顶部有两个版本操作：
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/v1/health` | 探活 `{status,version,repo,platform,auth,sessions}`；`auth=true` 表示要令牌 |
+| GET | `/api/v1/sysinfo` | 顶栏资源小插件：`{os,at,mem{total,used,available,percent},disk{path,total,used,free,percent}}`，单位字节 |
 | GET | `/api/v1/update/check?force=1` | 最新正式版 `{current,latest,available,url,notes,assets[]}`，`force=1` 跳过缓存 |
 | GET | `/api/v1/projects` | 项目列表 + 当前项目 |
 | POST | `/api/v1/projects` | 添加项目 `{path}` |
@@ -166,7 +167,7 @@ CLI 列表顶部有两个版本操作：
 | GET | `/api/v1/workflows?root=` | 扫 `artifacts/*/workflow-state.json` |
 | GET | `/api/v1/projects/overview?root=` | 项目资料看板：`{root,name,git{branch,dirty,changed[],commits[]},docs[],manifests[],artifacts[],tree[],scannedAt}`；`root` 必须是已登记项目 |
 | GET | `/api/v1/projects/file?path=` | 预览单个文本文件 `{path,name,size,modTime,content}`；限已登记项目内、≤512KB、非二进制 |
-| POST | `/api/v1/projects/chat` | 「项目对话」：在项目根目录开一个终端 `{root, agent?, mode?, sendPrompt?, remember?}`；没选过发不发提示词时返回 `{ok:false,needChoice:true,prompt}`，选过才开终端，返回 `{ok,agent,mode,sendPrompt,session}` |
+| POST | `/api/v1/projects/chat` | 「项目对话」：在项目根目录开一个终端 `{root, agent?, mode?, sendPrompt?, remember?, fresh?}`；没选过发不发提示词时返回 `{ok:false,needChoice:true,prompt}`，选过才开终端，返回 `{ok,agent,mode,sendPrompt,resumed,session}`。Claude Code 有上次的会话文件且 `fresh` 不为 true 时自动 `--resume`，`resumed=true` |
 | GET | `/api/v1/projects/chat/config?root=` | 读该项目的项目对话偏好：`{root,agent,mode,sendPrompt}`（`sendPrompt` 为 `null` 表示还没选过） |
 | POST | `/api/v1/projects/chat/config` | 保存项目对话偏好 `{root,agent,mode,sendPrompt?}`，下次「新对话」按它启动 |
 | POST | `/api/v1/projects/chat/prompt/reset` | 清掉所有项目记住的「发不发提示词」选择，下次打开重新询问 |
@@ -377,10 +378,22 @@ CLI 表现一致。
   256KB 缓冲；xterm 也在第一次点开时才创建。远程访问时不要再指望后台终端实时刷新
 - 轮询：项目 / 工作流 8 秒一次且并行请求，对话上下文 10 秒一次，看板 5 秒一次；页面隐藏时跳过
 - 会话标题是「项目对话 · <项目名>」，不出现在 SOP 开发的终端列表里，避免重复入口
+- 对话能跨更新续上：Claude Code 的对话写在 `~/.claude/projects/<项目>/<id>.jsonl`，daemon 启动对话后
+  把 id 记进 `chatPrefs[项目].resumeId`；更新/重启后再次打开项目对话会用 `--resume <id>` 接着聊
+  （`resumed:true`，恢复时不重发现状提示词）。点「新对话 / 换新终端」传 `fresh:true`，从空白开始
 - 标题栏下面的「仓库」一行是 GitHub / AtomGit 两个一级入口：接上了显示 `owner/repo`，点开是仓库弹窗
   （本地拉取 / 推送、最近提交、合并请求、令牌设置，见下节）；没接上灰着显示「未连接」，
   点一下说明当前远端在哪；数据来自项目根的 `git remote -v`
 - 对话页里点「换新终端 / 重启终端」是重开一段新对话，不会跳到 SOP 开发
+
+## 顶栏资源小插件
+
+标题栏右侧两条小进度条：内存占用、磁盘占用，10 秒刷新一次，页面隐藏时暂停。
+
+- 数据来自 `GET /api/v1/sysinfo`：Windows 走 `GlobalMemoryStatusEx` / `GetDiskFreeSpaceExW`，
+  Linux 读 `/proc/meminfo` 与 `statfs`；容器里看到的是宿主机内存和宿主磁盘
+- 阈值：≥80% 变琥珀色，≥92% 变红色；悬停显示已用 / 总量和磁盘路径
+- 取不到数据的平台显示「—」，不影响其它功能
 
 ## 仓库同步（项目对话页）
 

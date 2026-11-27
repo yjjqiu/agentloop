@@ -46,3 +46,26 @@ func TestChatPromptChoiceFalse(t *testing.T) {
 		t.Fatalf("false 也应能保存: %#v", pref)
 	}
 }
+
+// TestChatPrefResumeID 恢复点要能落盘，并且不丢其它偏好。
+func TestChatPrefResumeID(t *testing.T) {
+	dir := t.TempDir()
+	id := "11111111-2222-3333-4444-555555555555"
+	cfg := LoadConfig(dir)
+	cfg.SetChatPref(dir, ChatPref{Agent: "claude-code", Mode: "safe", ResumeID: id})
+
+	reloaded := LoadConfig(dir)
+	pref := reloaded.ChatPrefFor(dir)
+	if pref.ResumeID != id {
+		t.Fatalf("恢复点没有持久化: %#v", pref)
+	}
+	if pref.Agent != "claude-code" || pref.Mode != "safe" {
+		t.Fatalf("其它偏好被弄丢了: %#v", pref)
+	}
+
+	// 新建对话时清掉恢复点。
+	reloaded.SetChatPref(dir, ChatPref{Agent: pref.Agent, Mode: pref.Mode})
+	if got := LoadConfig(dir).ChatPrefFor(dir).ResumeID; got != "" {
+		t.Fatalf("清掉后不应再有恢复点: %q", got)
+	}
+}

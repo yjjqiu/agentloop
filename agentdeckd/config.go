@@ -21,6 +21,8 @@ type ChatPref struct {
 	Mode  string `json:"mode,omitempty"`
 	// SendPrompt 是「打开时要不要先发现状提示词」：nil 表示还没问过，开终端前会问一次。
 	SendPrompt *bool `json:"sendPrompt,omitempty"`
+	// ResumeID 是上一段 Claude 对话的会话 id：daemon 重启后用它 --resume 接着聊。
+	ResumeID string `json:"resumeId,omitempty"`
 }
 
 // CliOverride 是某个 CLI 的本地覆盖设置（路径 / 默认参数 / npm 包名 / 是否启用）。

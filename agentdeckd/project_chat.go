@@ -6,7 +6,11 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 )
 
 // projectChatPrompt 是项目对话的第一条指令：先看再答，明确禁止直接改代码。
@@ -76,6 +80,7 @@ func (a *App) registerChatRoutes(mux *http.ServeMux) {
 			Mode       string `json:"mode"`
 			SendPrompt *bool  `json:"sendPrompt"` // 这次发不发提示词
 			Remember   *bool  `json:"remember"`   // 要不要记住（默认记住）
+			Fresh      bool   `json:"fresh"`      // 开一段全新对话，丢弃上次的恢复点
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Root) == "" {
 			writeError(w, http.StatusBadRequest, "缺少 root")
@@ -110,7 +115,15 @@ func (a *App) registerChatRoutes(mux *http.ServeMux) {
 			return
 		}
 		def, mode := chatCommandDef(a.config.CliOverridesSnapshot(), agent, strings.TrimSpace(body.Mode))
+		// 上一段 Claude 对话还在磁盘上时接着聊：更新 daemon 不该把上下文一起清掉。
+		resumeID := ""
+		if !body.Fresh && canResumeClaude(agent.ID, pref.ResumeID, root) {
+			resumeID = pref.ResumeID
+			prompt = "" // 恢复已有对话时不再重发现状提示词
+			def.Args = append(def.Args, "--resume", resumeID)
+		}
 		command := buildAgentCommand(def, agent.Path, prompt)
+		started := time.Now()
 		session, err := a.sessions.Start(command, root)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
@@ -120,10 +133,17 @@ func (a *App) registerChatRoutes(mux *http.ServeMux) {
 		session.SetTitle("项目对话 · " + baseName(root))
 		// 记住这次的选择，下次打开不再问。
 		pref.Agent, pref.Mode = agent.ID, mode
+		if body.Fresh {
+			pref.ResumeID = ""
+		}
 		if body.SendPrompt != nil && (body.Remember == nil || *body.Remember) {
 			pref.SendPrompt = body.SendPrompt
 		}
 		a.config.SetChatPref(root, pref)
+		// 记下这次 Claude 的会话 id，daemon 重启后好接着聊。
+		if agent.ID == "claude-code" {
+			go a.rememberClaudeChat(root, started)
+		}
 		// 位置参数型 CLI 直接把提示词带进命令行；其余等 TUI 起来后再输入。
 		if prompt != "" && agent.Prompt != "positional" {
 			go a.pipes.injectPrompt(session.ID, prompt, true)
@@ -133,9 +153,77 @@ func (a *App) registerChatRoutes(mux *http.ServeMux) {
 			"agent":      agent.ID,
 			"mode":       mode,
 			"sendPrompt": prompt != "",
+			"resumed":    resumeID != "",
 			"session":    session.Snapshot(),
 		})
 	})
+}
+
+// —— 对话恢复 ——
+// Claude Code 把对话写在 ~/.claude/projects/<munged-cwd>/<session-id>.jsonl。
+// 更新 daemon 只会杀掉 PTY，不会删这些文件，所以可以用 --resume <id> 接着聊。
+
+var claudeSessionIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// canResumeClaude 判断这个项目有没有可恢复的 Claude 对话。
+func canResumeClaude(agentID, sessionID, root string) bool {
+	if agentID != "claude-code" || !claudeSessionIDPattern.MatchString(sessionID) {
+		return false
+	}
+	_, err := os.Stat(claudeTranscriptPath(root, sessionID))
+	return err == nil
+}
+
+func claudeTranscriptPath(root, sessionID string) string {
+	return filepath.Join(homeDir(), ".claude", "projects", mungeProjectDir(root), sessionID+".jsonl")
+}
+
+// rememberClaudeChat 在对话启动后把新会话 id 记到这个项目上。
+// 会话文件由 Claude 自己创建，可能要等几秒才出现。
+func (a *App) rememberClaudeChat(root string, started time.Time) {
+	dir := filepath.Join(homeDir(), ".claude", "projects", mungeProjectDir(root))
+	for attempt := 0; attempt < 30; attempt++ {
+		id := newestClaudeSession(dir, started)
+		if id != "" {
+			pref := a.config.ChatPrefFor(root)
+			if pref.ResumeID != id {
+				pref.ResumeID = id
+				a.config.SetChatPref(root, pref)
+			}
+			return
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
+
+// newestClaudeSession 返回 started 之后还在写的最新会话 id。
+func newestClaudeSession(dir string, started time.Time) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	floor := started.Add(-2 * time.Second)
+	var newest string
+	var newestMod time.Time
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
+			continue
+		}
+		name := strings.TrimSuffix(entry.Name(), ".jsonl")
+		// 只认 UUID 命名的会话文件，别把项目里其它 jsonl 当成对话。
+		if !claudeSessionIDPattern.MatchString(name) {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || info.ModTime().Before(floor) {
+			continue
+		}
+		if info.ModTime().After(newestMod) {
+			newest = name
+			newestMod = info.ModTime()
+		}
+	}
+	return newest
 }
 
 // chatCommandDef 按「项目对话」选定的启动模式重算参数：

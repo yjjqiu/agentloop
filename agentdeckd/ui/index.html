@@ -6,9 +6,9 @@
 <title>AgentDeck</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="vendor/xterm.css">
-<link rel="stylesheet" href="app.css?v=0.4.2">
-<link rel="stylesheet" href="board.css?v=0.4.2">
-<link rel="stylesheet" href="docs.css?v=0.4.2">
+<link rel="stylesheet" href="app.css?v=0.4.3">
+<link rel="stylesheet" href="board.css?v=0.4.3">
+<link rel="stylesheet" href="docs.css?v=0.4.3">
 </head>
 <body>
 <div class="app">
@@ -43,6 +43,10 @@
       </div>
     </nav>
     <div class="crumb" id="topbarHint">未选择会话</div>
+    <div class="sys-meter" id="sysMeter" hidden>
+      <span class="sys-metric" id="sysMemMetric"><span class="sys-key">内存</span><span class="sys-bar"><i id="sysMemFill"></i></span><b id="sysMemPct">—</b></span>
+      <span class="sys-metric" id="sysDiskMetric"><span class="sys-key">磁盘</span><span class="sys-bar"><i id="sysDiskFill"></i></span><b id="sysDiskPct">—</b></span>
+    </div>
     <button id="updateBadge" class="update-badge" type="button" hidden title="发现新版本，点击查看">有新版</button>
     <div class="win-controls" id="winControls" hidden>
       <button class="win-btn" id="winMin" type="button" title="最小化" aria-label="最小化">
@@ -676,10 +680,10 @@
 
 <script src="vendor/xterm.js"></script>
 <script src="vendor/addon-fit.js"></script>
-<script src="brand-logos.js?v=0.4.2"></script>
-<script src="avatars.js?v=0.4.2"></script>
-<script src="app.js?v=0.4.2"></script>
-<script src="board.js?v=0.4.2"></script>
-<script src="docs.js?v=0.4.2"></script>
+<script src="brand-logos.js?v=0.4.3"></script>
+<script src="avatars.js?v=0.4.3"></script>
+<script src="app.js?v=0.4.3"></script>
+<script src="board.js?v=0.4.3"></script>
+<script src="docs.js?v=0.4.3"></script>
 </body>
 </html>

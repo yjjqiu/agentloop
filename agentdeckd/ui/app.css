@@ -208,6 +208,44 @@ kbd {
 }
 .crumb b { color: var(--text-dim); font-weight: 550; }
 
+/* 顶栏资源小插件：内存 / 磁盘 */
+.sys-meter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  padding-right: 4px;
+  -webkit-app-region: no-drag;
+}
+.sys-meter[hidden] { display: none; }
+.sys-metric { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--text-faint); }
+.sys-bar { width: 46px; height: 5px; border-radius: 999px; background: var(--track); overflow: hidden; }
+.sys-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width .45s ease, background .2s;
+}
+.sys-meter b {
+  min-width: 26px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.sys-metric.warn .sys-bar i { background: var(--amber); }
+.sys-metric.hot .sys-bar i { background: var(--red); }
+.sys-metric.warn b,
+.sys-metric.hot b { color: var(--text); }
+@media (max-width: 860px) {
+  .sys-key { display: none; }
+  .sys-bar { width: 34px; }
+}
+
 .btn-icon {
   display: inline-flex;
   align-items: center;
