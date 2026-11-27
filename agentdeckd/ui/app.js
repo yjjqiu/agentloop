@@ -264,7 +264,7 @@ function applyTermTheme(id) {
   const theme = termTheme();
   document.documentElement.style.setProperty('--term-bg', theme.background);
   for (const session of sessions.values()) {
-    try { session.term.options.theme = theme; } catch { /* 旧版 xterm 不支持热切换 */ }
+    try { if (session.term) session.term.options.theme = theme; } catch { /* 旧版 xterm 不支持热切换 */ }
   }
   renderTermThemes();
 }
@@ -1213,26 +1213,41 @@ function renderDetail(workflow, key) {
 
 // —— 数据刷新 ——
 async function refresh(force = false) {
+  if (document.hidden && !force) return;
   const { projects, active } = await api.projects();
-  const enriched = [];
-  for (const project of projects) {
+  // 每个项目一次 workflows；并行发，别让 4 个项目的往返串成一串。
+  const enriched = await Promise.all(projects.map(async (project) => {
     const result = await api.workflows(project.path);
-    enriched.push({ ...project, runs: result.workflows || [], installed: result.installed || {} });
-  }
+    return { ...project, runs: result.workflows || [], installed: result.installed || {} };
+  }));
   state.projects = enriched;
   state.active = active || projects[0]?.path || '';
 
   // 所有在跑的终端（包括流水线拉起来的）都要出现在左侧终端目录里。
   const list = await api.sessions().catch(() => []);
   const known = new Set(list.map((s) => s.id));
+  let stateChanged = false;
   for (const item of list) {
-    if (!sessions.has(item.id)) attachSession(item, false);
+    const session = sessions.get(item.id);
+    if (!session) {
+      attachSession(item, false);
+      continue;
+    }
+    // 终端没订阅流的时候（后台会话），靠列表把「已退出」补上。
+    if (item.state && session.state !== item.state) {
+      session.state = item.state;
+      stateChanged = true;
+    }
   }
   for (const [id, session] of sessions) {
     if (!known.has(id) && session.state === 'running') {
       session.state = 'exited';
-      renderRail();
+      stateChanged = true;
     }
+  }
+  if (stateChanged) {
+    renderRail();
+    renderTermBar();
   }
 
   const signature = JSON.stringify(enriched.map((p) => [p.path, p.runs]));
@@ -1272,11 +1287,47 @@ function makeTerminal(session) {
 
 function fitActive() {
   const session = sessions.get(activeId);
-  if (!session) return;
+  if (!session || !session.fit) return;
   try {
     session.fit.fit();
     api.resize(session.id, session.term.cols, session.term.rows);
   } catch { /* 容器不可见时忽略 */ }
+}
+
+// ensureTerminal 只在终端真正要显示时才创建 xterm，后台会话不占渲染与解析开销。
+function ensureTerminal(session) {
+  if (!session.term) makeTerminal(session);
+  return session;
+}
+
+// terminalVisible 判断当前界面是否正在显示终端（项目对话页或 SOP 终端页签）。
+function terminalVisible() {
+  if (state.view === 'chat') return true;
+  return !(typeof boardState !== 'undefined' && boardState.tab === 'board');
+}
+
+// syncStreams 只让当前可见的终端订阅 SSE；其余断流，切回来时服务端会重放缓冲。
+// 四个常驻 Claude 终端同时串流时，仅这一项就能省掉大部分后台解析和带宽。
+function syncStreams() {
+  const want = terminalVisible() && !document.hidden ? activeId : '';
+  for (const [id, session] of sessions) {
+    if (id === want) openStream(session);
+    else closeStream(session);
+  }
+}
+
+function openStream(session) {
+  if (session.source) return;
+  ensureTerminal(session);
+  // 重连时服务端会补发整段缓冲，先清屏避免和旧内容叠在一起。
+  session.term.reset();
+  streamSession(session);
+}
+
+function closeStream(session) {
+  if (!session.source) return;
+  session.source.close();
+  session.source = null;
 }
 
 function projectNameOf(path) {
@@ -1322,12 +1373,16 @@ function renderTermBar() {
 
 function setActive(id) {
   activeId = id;
-  for (const [key, session] of sessions) session.host.hidden = key !== id;
+  const session = sessions.get(id);
+  if (session) ensureTerminal(session);
+  for (const [key, item] of sessions) {
+    if (item.host) item.host.hidden = key !== id;
+  }
   emptyState.hidden = sessions.size > 0;
   renderTermBar();
   renderRail();
+  syncStreams();
   refreshContext();
-  const session = sessions.get(id);
   if (session) requestAnimationFrame(() => { fitActive(); session.term.focus(); });
 }
 
@@ -1395,7 +1450,7 @@ function startContextPolling() {
     const sopBoard = typeof boardState !== 'undefined' && state.view !== 'chat' && boardState.tab !== 'terminal';
     if (sopBoard) return;
     refreshContext();
-  }, 6000);
+  }, 10000);
   refreshContext();
 }
 
@@ -1403,8 +1458,8 @@ function removeSession(id) {
   const session = sessions.get(id);
   if (!session) return;
   session.source?.close();
-  session.term.dispose();
-  session.host.remove();
+  session.term?.dispose();
+  session.host?.remove();
   sessions.delete(id);
   if (activeId === id) {
     const next = sessions.keys().next().value || '';
@@ -1469,8 +1524,6 @@ function attachSession(info, focus = true) {
     agent: info.agent || '',
   };
   sessions.set(session.id, session);
-  makeTerminal(session);
-  streamSession(session);
   if (focus) setActive(session.id);
   else renderRail();
 }
@@ -3347,10 +3400,18 @@ function streamSession(session) {
       session.state = payload.exitCode === 0 ? 'exited' : 'error';
       session.term.write(`\r\n\x1b[2m[进程已退出，code=${payload.exitCode}]\x1b[0m\r\n`);
       source.close();
+      if (session.source === source) session.source = null;
       renderRail();
     }
   };
-  source.onerror = () => source.close();
+  source.onerror = () => {
+    source.close();
+    if (session.source === source) session.source = null;
+    // 断线后如果这个终端仍然是当前可见的，过几秒自动重连。
+    setTimeout(() => {
+      if (activeId === session.id && terminalVisible() && !document.hidden) openStream(session);
+    }, 3000);
+  };
   session.source = source;
 }
 
@@ -3376,12 +3437,18 @@ window.addEventListener('resize', () => requestAnimationFrame(fitActive));
   if (typeof switchTab === 'function') switchTab('board');
 
   const existing = await api.sessions();
-  for (const item of existing) attachSession(item);
+  // 只登记到左侧列表；xterm 和 SSE 等到真正切到这个终端时再建。
+  for (const item of existing) attachSession(item, false);
 
   state.timer = setInterval(() => {
     refresh().catch(() => {});
-  }, 3000);
+  }, 8000);
   startContextPolling();
+  // 页面切走时断掉终端流，回来再重放，后台标签页不再空转。
+  document.addEventListener('visibilitychange', () => {
+    syncStreams();
+    if (!document.hidden) refresh().catch(() => {});
+  });
 
   const demo = params.get('demo');
   if (demo) createSession({ command: demo, cwd: cwdInput.value });

@@ -851,6 +851,8 @@ function applyView() {
     btn.disabled = chat;
   });
   if (typeof renderRail === 'function') renderRail();
+  // 视图切换会改变「终端是否可见」：只给当前可见的终端保留 SSE。
+  if (typeof syncStreams === 'function') syncStreams();
   requestAnimationFrame(() => fitActive());
   if (chat) {
     if (typeof renderDocs === 'function') renderDocs(false).catch(() => {});
@@ -993,12 +995,12 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && !$('rejectModal').hidden) closeReject();
 });
 
-// 看板页签可见时每 2 秒刷新。
+// 看板页签可见时每 5 秒刷新（远程访问时每次往返不便宜，别太频繁）。
 setInterval(() => {
-  if (boardState.tab === 'board' && !$('projectBoard').hidden) {
+  if (boardState.tab === 'board' && !$('projectBoard').hidden && !document.hidden) {
     renderBoard(false).catch(() => {});
   }
-}, 2000);
+}, 5000);
 
 // 每秒只更新耗时，不重绘整块看板。
 setInterval(() => {
