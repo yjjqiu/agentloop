@@ -7,7 +7,7 @@ import (
 
 // version 是 daemon 的版本号，发布时用 -ldflags "-X main.version=x.y.z" 覆盖，
 // 本地开发默认跟随仓库版本。
-var version = "0.4.0"
+var version = "0.4.1"
 
 // defaultRepo 是发布 / 更新检查用的 GitHub 仓库（owner/repo），
 // 可用环境变量 AGENTDECK_REPO 覆盖。

@@ -60,11 +60,10 @@ func (p *unixPTY) Close() error {
 }
 
 // startPTY 用 /bin/sh 启动命令，并把 stdio 接到伪终端。
-// extraEnv 覆盖继承环境里的同名变量（网关接管时用来改上游地址）。
-func startPTY(command, workdir string, cols, rows int, extraEnv []string) (ptyHost, error) {
+func startPTY(command, workdir string, cols, rows int) (ptyHost, error) {
 	cmd := exec.Command("/bin/sh", "-c", "exec "+command)
 	cmd.Dir = workdir
-	cmd.Env = mergeEnv(append(os.Environ(), "TERM=xterm-256color"), extraEnv)
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 	file, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 	if err != nil {
 		return nil, err

@@ -46,7 +46,6 @@ type Config struct {
 	AuthToken    string                    `json:"authToken,omitempty"`    // 对外监听时的访问令牌
 	GitHubToken  string                    `json:"githubToken,omitempty"`  // GitHub token：私有仓库查更新 + 仓库面板
 	AtomGitToken string                    `json:"atomgitToken,omitempty"` // AtomGit token：仓库面板
-	Gateway      GatewaySettings           `json:"gateway,omitempty"`      // 内置 agentgateway 的托管设置
 }
 
 // LoadConfig 读配置，文件不存在就用默认值。
@@ -128,21 +127,6 @@ func (c *Config) AuthTokenValue() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.AuthToken
-}
-
-// GatewaySettingsValue 返回网关设置（零值由调用方补默认）。
-func (c *Config) GatewaySettingsValue() GatewaySettings {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.Gateway
-}
-
-// SetGatewaySettings 保存网关设置并立即落盘。
-func (c *Config) SetGatewaySettings(next GatewaySettings) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.Gateway = next
-	c.saveLocked()
 }
 
 // SetAuthToken 写入访问令牌并立即落盘。

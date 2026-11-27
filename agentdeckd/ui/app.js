@@ -98,14 +98,10 @@ const api = {
   cliJobCancel: () => req('/api/v1/clis/job/cancel', { method: 'POST' }),
   saveCli: (payload) => req('/api/v1/clis/config', { method: 'POST', body: JSON.stringify(payload) }),
   resetCli: (id) => req('/api/v1/clis/reset', { method: 'POST', body: JSON.stringify({ id }) }),
-  gateway: (withMetrics) => req(`/api/v1/gateway${withMetrics ? '?metrics=1' : ''}`),
-  saveGateway: (payload) => req('/api/v1/gateway/config', { method: 'POST', body: JSON.stringify(payload) }),
-  gatewayInstall: () => req('/api/v1/gateway/install', { method: 'POST', body: '{}' }),
-  gatewayAction: (action) => req(`/api/v1/gateway/${action}`, { method: 'POST', body: '{}' }),
   installLocal: (payload) => req('/api/v1/install', { method: 'POST', body: JSON.stringify(payload) }),
   sessions: () => req('/api/v1/sessions').then((r) => r.sessions || []),
   spawn: (options) => req('/api/v1/sessions', { method: 'POST', body: JSON.stringify(options) })
-    .then((r) => ({ ok: true, warning: r.warning || '', ...r.session }))
+    .then((r) => ({ ok: true, ...r.session }))
     .catch((error) => ({ ok: false, error: String(error.message || error) })),
   write: (id, data) => req(`/api/v1/sessions/${encodeURIComponent(id)}/input`, {
     method: 'POST',
@@ -699,7 +695,6 @@ function termRow(session) {
   item.innerHTML = `
     <span class="term-ava"></span>
     <span class="term-name"></span>
-    <span class="term-gw" title="请求经内置 agentgateway 转发"${session.routed ? '' : ' hidden'}>网关</span>
     <button class="term-close" type="button" title="关闭">×</button>`;
   const avaEl = item.querySelector('.term-ava');
   const avatar = sessionAvatarHTML(session, 16);
@@ -1299,8 +1294,6 @@ function renderTermBar() {
   if (termAva) termAva.innerHTML = barAvatar;
   if (termDot) termDot.hidden = Boolean(barAvatar);
   termCwd.textContent = session ? session.cwd : '';
-  const termGw = $('termGw');
-  if (termGw) termGw.hidden = !session || !session.routed;
   termRestart.hidden = !session;
   termClose.hidden = !session;
   if (!session) {
@@ -1429,12 +1422,7 @@ async function createSession({ command, cwd, agent = '' }) {
     alert(`启动失败：${result.error}`);
     return;
   }
-  attachSession({ id: result.id, label: command, cwd: result.cwd, state: 'running', agent: result.agent || agent, routed: result.routed });
-  // 勾了接管却没接上时提示一次，别每开一个终端都弹。
-  if (result.warning && !createSession.warned) {
-    createSession.warned = true;
-    alert(result.warning);
-  }
+  attachSession({ id: result.id, label: command, cwd: result.cwd, state: 'running', agent: result.agent || agent });
   // 新建终端后直接进入它的对话页。
   if (typeof switchTab === 'function') switchTab('terminal');
 }
@@ -1479,7 +1467,6 @@ function attachSession(info, focus = true) {
     cwd: info.cwd,
     state: info.state || 'running',
     agent: info.agent || '',
-    routed: Boolean(info.routed),
   };
   sessions.set(session.id, session);
   makeTerminal(session);
@@ -2386,10 +2373,6 @@ function setSettingsTab(tab) {
   }
   $('paneCli').hidden = tab !== 'cli';
   $('paneWf').hidden = tab !== 'wf';
-  const gw = $('paneGateway');
-  if (gw) gw.hidden = tab !== 'gateway';
-  if (tab === 'gateway') loadGateway().catch(() => {});
-  else stopGatewayPoll();
   const look = $('paneLook');
   if (look) look.hidden = tab !== 'look';
   const about = $('paneAbout');
@@ -3195,7 +3178,7 @@ $('cliJobCancel').addEventListener('click', async () => {
   try { await api.cliJobCancel(); } catch (error) { alert(`取消失败：${error.message || error}`); }
   loadCliJob();
 });
-$('settingsClose').addEventListener('click', () => { $('settingsModal').hidden = true; stopGatewayPoll(); });
+$('settingsClose').addEventListener('click', () => { $('settingsModal').hidden = true; });
 $('settingsModal').addEventListener('click', (event) => {
   if (event.target === $('settingsModal')) $('settingsModal').hidden = true;
 });

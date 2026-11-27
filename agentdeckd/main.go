@@ -27,7 +27,6 @@ type App struct {
 	releases *ReleaseService
 	auth     *Auth
 	updates  *UpdateService
-	gateway  *Gateway
 }
 
 func defaultDataDir() string {
@@ -61,7 +60,7 @@ func (a *App) cliList() []map[string]any {
 			"overridePath": ov.Path,
 			"overrideArgs": ov.Args,
 			"overrideMode": ov.Mode,
-			"command":      CliCommandWith(agent, a.gateway.RouteArgs(agent.ID)),
+			"command":      CliCommand(agent),
 			"note":         agent.Note,
 			"packageName":  pkg,
 			"detectedPkg":  detectedPkg,
@@ -114,19 +113,6 @@ func main() {
 	app.install = NewCliInstaller(app.config, app.versions)
 	app.releases = NewReleaseService(*dataDir)
 	app.updates = NewUpdateService(repoSlug(), app.config.GitHubTokenValue)
-	app.gateway = NewGateway(app)
-
-	// 网关是可选组件：装了 + 开了自动启动才拉起，不影响其它功能。
-	// 上一次 daemon 退出时子进程可能还留着，Running() 会先认领它，避免重复拉起撞端口。
-	if st := app.gateway.Settings(); st.AutoStart && app.gateway.Installed() {
-		if app.gateway.Running() {
-			log.Printf("agentgateway 已在运行: http://127.0.0.1:%d（沿用现有进程）", st.Port)
-		} else if err := app.gateway.Start(); err != nil {
-			log.Printf("自动启动 agentgateway 失败: %v", err)
-		} else {
-			log.Printf("agentgateway 已启动: http://127.0.0.1:%d（管理台 %d）", st.Port, st.AdminPort)
-		}
-	}
 
 	// 鉴权：-token / 环境变量总是生效；配置文件里的令牌只在对外监听时使用
 	// （本机监听还要求登录会打断桌面版，没必要）。

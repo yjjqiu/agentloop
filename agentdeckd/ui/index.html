@@ -6,9 +6,9 @@
 <title>AgentDeck</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="vendor/xterm.css">
-<link rel="stylesheet" href="app.css?v=0.3.9">
-<link rel="stylesheet" href="board.css?v=0.3.9">
-<link rel="stylesheet" href="docs.css?v=0.3.9">
+<link rel="stylesheet" href="app.css?v=0.4.1">
+<link rel="stylesheet" href="board.css?v=0.4.1">
+<link rel="stylesheet" href="docs.css?v=0.4.1">
 </head>
 <body>
 <div class="app">
@@ -109,7 +109,6 @@
             <span class="term-dot" id="termDot"></span>
             <span class="term-title" id="termTitle">没有活动终端</span>
             <span class="pill" id="termBadge" hidden></span>
-            <span class="pill gw-pill" id="termGw" hidden title="这个终端的请求经内置 agentgateway 转发">网关</span>
             <span class="ctx-meter" id="ctxMeter" hidden>
               <span class="ctx-bar"><i id="ctxFill"></i></span>
               <span class="ctx-label" id="ctxLabel">上下文 —</span>
@@ -327,10 +326,6 @@
           <span>终端 CLI</span>
           <small>路径、参数与版本</small>
         </button>
-        <button class="settings-tab" type="button" data-tab="gateway" role="tab">
-          <span>网关</span>
-          <small>agentgateway · 指标</small>
-        </button>
         <button class="settings-tab" type="button" data-tab="wf" role="tab">
           <span>工作流</span>
           <small>右侧面板开关</small>
@@ -363,96 +358,6 @@
             </div>
             <div class="cli-job-log" id="cliJobLog"></div>
           </div>
-        </div>
-        <div class="settings-pane" id="paneGateway" hidden>
-          <div class="gw-hero">
-            <div class="gw-hero-main">
-              <span class="gw-dot" id="gwDot" aria-hidden="true"></span>
-              <div class="gw-hero-text">
-                <b id="gwState">正在检测…</b>
-                <small id="gwMeta">agentgateway · 未安装</small>
-              </div>
-            </div>
-            <div class="gw-actions" id="gwActions"></div>
-          </div>
-
-          <div class="gw-job" id="gwJob" hidden>
-            <div class="gw-job-head">
-              <span id="gwJobPhase">下载中</span>
-              <span id="gwJobPct"></span>
-            </div>
-            <div class="gw-bar"><i id="gwBar"></i></div>
-          </div>
-
-          <div class="gw-tiles" id="gwTiles"></div>
-
-          <div class="gw-form">
-            <label class="gw-field">
-              <span>上游地址</span>
-              <input id="gwUpstream" type="text" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:3425">
-              <em>默认指向本机 magpie 网关；换成任意 Anthropic 兼容端点也行</em>
-            </label>
-            <label class="gw-field">
-              <span>上游 Key</span>
-              <input id="gwKey" type="password" spellcheck="false" autocomplete="off" placeholder="magpie">
-              <em>回环地址用 magpie 的短串即可</em>
-            </label>
-            <label class="gw-field">
-              <span>业务端口</span>
-              <input id="gwPort" type="number" min="1" max="65535" spellcheck="false">
-              <em>说 Anthropic Messages 的 CLI 对接它</em>
-            </label>
-            <label class="gw-field">
-              <span>代理端口</span>
-              <input id="gwProxyPort" type="number" min="1" max="65535" spellcheck="false">
-              <em>Codex / Gemini 这类协议原样转发，走这个口</em>
-            </label>
-            <label class="gw-field">
-              <span>管理端口</span>
-              <input id="gwAdminPort" type="number" min="1" max="65535" spellcheck="false">
-              <em>管理台与 /metrics 都在这</em>
-            </label>
-          </div>
-
-          <div class="gw-actions-row">
-            <label class="set-switch"><input type="checkbox" id="gwAuto"> 随 AgentDeck 启动</label>
-            <span class="gw-saved" id="gwSaved">已保存</span>
-            <span class="gw-spacer"></span>
-            <button id="gwOpenAdmin" class="btn mini" type="button">打开管理台</button>
-            <button id="gwRestart" class="btn mini ghost" type="button">重启生效</button>
-            <button id="gwSave" class="btn mini primary" type="button">保存</button>
-          </div>
-
-          <div class="gw-takeover">
-            <div class="gw-takeover-head">
-              <b>终端接管</b>
-              <small>勾选的 CLI，新开终端会经网关转发；已开着的终端要重启才生效</small>
-            </div>
-            <div class="gw-routes" id="gwRoutes"></div>
-            <p class="gw-takeover-warn" id="gwRouteWarn" hidden>网关停掉或改端口，已接管的终端会立即断线，需要重开终端。</p>
-          </div>
-
-          <details class="gw-details">
-            <summary>高级：用已有的 agentgateway 二进制</summary>
-            <div class="gw-field gw-field-inline">
-              <span>二进制路径</span>
-              <input id="gwBin" type="text" spellcheck="false" autocomplete="off" placeholder="留空 = 用托管目录里的那份">
-              <em>已经自己下过的话填绝对路径，免掉 100MB 下载；保存后点「重启生效」</em>
-            </div>
-          </details>
-
-          <details class="gw-details">
-            <summary>生成的配置（只读，手改会被覆盖）</summary>
-            <pre id="gwConfig" class="gw-code">—</pre>
-          </details>
-
-          <details class="gw-details">
-            <summary>运行日志</summary>
-            <pre id="gwLog" class="gw-code">—</pre>
-          </details>
-
-          <p class="pane-hint">勾了「终端接管」的 CLI，新开终端会先把请求打到 <code id="gwUrlInline">http://127.0.0.1:4000</code>
-            再转发给上游，这里的指标就是它们真实的用量；没勾的终端一切照旧。也可以在管理台的 Playground 里手动试。</p>
         </div>
         <div class="settings-pane" id="paneWf" hidden>
           <div class="set-row">
@@ -771,11 +676,10 @@
 
 <script src="vendor/xterm.js"></script>
 <script src="vendor/addon-fit.js"></script>
-<script src="brand-logos.js?v=0.3.9"></script>
-<script src="avatars.js?v=0.3.9"></script>
-<script src="app.js?v=0.3.9"></script>
-<script src="gateway.js?v=0.3.9"></script>
-<script src="board.js?v=0.3.9"></script>
-<script src="docs.js?v=0.3.9"></script>
+<script src="brand-logos.js?v=0.4.1"></script>
+<script src="avatars.js?v=0.4.1"></script>
+<script src="app.js?v=0.4.1"></script>
+<script src="board.js?v=0.4.1"></script>
+<script src="docs.js?v=0.4.1"></script>
 </body>
 </html>

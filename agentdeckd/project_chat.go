@@ -110,9 +110,8 @@ func (a *App) registerChatRoutes(mux *http.ServeMux) {
 			return
 		}
 		def, mode := chatCommandDef(a.config.CliOverridesSnapshot(), agent, strings.TrimSpace(body.Mode))
-		routeEnv, routeArgs := a.gateway.Takeover(agent.ID)
-		command := buildAgentCommand(def, agent.Path, prompt, routeArgs)
-		session, err := a.sessions.Start(command, root, routeEnv, len(routeEnv) > 0 || len(routeArgs) > 0)
+		command := buildAgentCommand(def, agent.Path, prompt)
+		session, err := a.sessions.Start(command, root)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return

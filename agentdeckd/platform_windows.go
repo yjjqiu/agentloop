@@ -17,15 +17,11 @@ import (
 
 // —— Windows 平台实现：ConPTY、cmd.exe 包装、npm 全局目录 ——
 
-// startPTY 用 ConPTY 启动命令。extraEnv 覆盖继承环境里的同名变量
-// （网关接管时用来改上游地址）；为空时不传，子进程直接继承 daemon 的环境。
-func startPTY(command, workdir string, cols, rows int, extraEnv []string) (ptyHost, error) {
+// startPTY 用 ConPTY 启动命令。
+func startPTY(command, workdir string, cols, rows int) (ptyHost, error) {
 	opts := []conpty.ConPtyOption{
 		conpty.ConPtyDimensions(cols, rows),
 		conpty.ConPtyWorkDir(workdir),
-	}
-	if len(extraEnv) > 0 {
-		opts = append(opts, conpty.ConPtyEnv(mergeEnv(os.Environ(), extraEnv)))
 	}
 	handle, err := conpty.Start(wrapCommand(command), opts...)
 	if err != nil {

@@ -232,20 +232,12 @@ func DetectAgentsWith(overrides map[string]CliOverride) []AgentStatus {
 
 // CliCommand 拼出新终端里要执行的完整命令（含用户覆盖的参数）。
 func CliCommand(agent AgentStatus) string {
-	return CliCommandWith(agent, nil)
-}
-
-// CliCommandWith 在内置参数后追加 extra（网关接管时用来塞 --settings 之类的参数）。
-func CliCommandWith(agent AgentStatus, extra []string) string {
 	bin := agent.Path
 	if bin == "" {
 		bin = agent.Bin
 	}
 	parts := []string{quoteArg(bin)}
 	for _, arg := range agent.Args {
-		parts = append(parts, quoteArg(arg))
-	}
-	for _, arg := range extra {
 		parts = append(parts, quoteArg(arg))
 	}
 	return strings.Join(parts, " ")
@@ -263,13 +255,9 @@ func normalizeArgs(args []string) []string {
 }
 
 // buildAgentCommand 拼出交给 ConPTY 的命令行。prompt 只在 positional 模式下追加。
-func buildAgentCommand(def AgentDef, path string, prompt string, extra []string) string {
+func buildAgentCommand(def AgentDef, path string, prompt string) string {
 	parts := []string{quoteArg(path)}
 	for _, arg := range def.Args {
-		parts = append(parts, quoteArg(arg))
-	}
-	// extra 必须排在 -- <prompt> 之前：prompt 是位置参数，后面的都会被当成提示词内容。
-	for _, arg := range extra {
 		parts = append(parts, quoteArg(arg))
 	}
 	if prompt != "" && def.Prompt == "positional" {
