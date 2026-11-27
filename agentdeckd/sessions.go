@@ -34,6 +34,7 @@ type Session struct {
 	Label    string
 	title    string
 	agent    string // 会话对应的 CLI id（流水线派发时写入，界面用来画品牌头像）
+	routed   bool   // 启动时注入了网关地址，这个终端的流量经 agentgateway 转发
 	Cwd      string
 	Started  time.Time // 启动时刻，用来在 CLI 的会话记录里定位本终端对应的文件
 	pty      ptyHost
@@ -125,8 +126,9 @@ func (s *Session) PlainText(max int) string {
 type SessionSnapshot struct {
 	ID       string `json:"id"`
 	Label    string `json:"label"`
-	Title    string `json:"title,omitempty"` // 流水线会话的「任务 · 阶段」标记
-	Agent    string `json:"agent,omitempty"` // 会话使用的 CLI id，界面用来画品牌头像
+	Title    string `json:"title,omitempty"`  // 流水线会话的「任务 · 阶段」标记
+	Agent    string `json:"agent,omitempty"`  // 会话使用的 CLI id，界面用来画品牌头像
+	Routed   bool   `json:"routed,omitempty"` // 流量是否经内置网关转发
 	Cwd      string `json:"cwd"`
 	State    string `json:"state"`
 	ExitCode int    `json:"exitCode"`
@@ -136,7 +138,7 @@ type SessionSnapshot struct {
 func (s *Session) Snapshot() SessionSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return SessionSnapshot{ID: s.ID, Label: s.Label, Title: s.title, Agent: s.agent, Cwd: s.Cwd, State: s.state, ExitCode: s.exitCode}
+	return SessionSnapshot{ID: s.ID, Label: s.Label, Title: s.title, Agent: s.agent, Routed: s.routed, Cwd: s.Cwd, State: s.state, ExitCode: s.exitCode}
 }
 
 // SetAgent 记录会话使用的 CLI id，供界面显示品牌头像。
@@ -243,8 +245,32 @@ func (m *SessionManager) List() []SessionSnapshot {
 	return out
 }
 
-// Start 在指定工作目录启动一个 PTY 会话。
-func (m *SessionManager) Start(command, cwd string) (*Session, error) {
+// mergeEnv 在基础环境上叠加覆盖项：同名变量只保留后面的值。
+// Windows 的环境变量名不区分大小写，统一按大写比较。
+func mergeEnv(base, over []string) []string {
+	if len(over) == 0 {
+		return base
+	}
+	keys := make(map[string]bool, len(over))
+	for _, kv := range over {
+		if i := strings.IndexByte(kv, '='); i > 0 {
+			keys[strings.ToUpper(kv[:i])] = true
+		}
+	}
+	out := make([]string, 0, len(base)+len(over))
+	for _, kv := range base {
+		if i := strings.IndexByte(kv, '='); i > 0 && keys[strings.ToUpper(kv[:i])] {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return append(out, over...)
+}
+
+// Start 在指定工作目录启动一个 PTY 会话。extraEnv 覆盖从 daemon 继承的同名变量，
+// 网关接管（把上游地址指到本地网关）就是靠它实现的；routed 表示这次启动确实接管了
+// （有的 CLI 靠启动参数而不是环境变量接管，env 为空也算）。
+func (m *SessionManager) Start(command, cwd string, extraEnv []string, routed bool) (*Session, error) {
 	if err := ptyAvailable(); err != nil {
 		return nil, err
 	}
@@ -256,7 +282,7 @@ func (m *SessionManager) Start(command, cwd string) (*Session, error) {
 		return nil, fmt.Errorf("工作目录不存在: %s", workdir)
 	}
 
-	handle, err := startPTY(command, workdir, 120, 32)
+	handle, err := startPTY(command, workdir, 120, 32, extraEnv)
 	if err != nil {
 		return nil, fmt.Errorf("启动失败: %w", err)
 	}
@@ -269,6 +295,7 @@ func (m *SessionManager) Start(command, cwd string) (*Session, error) {
 		Label:   command,
 		Cwd:     workdir,
 		Started: time.Now(),
+		routed:  routed,
 		pty:     handle,
 		subs:    make(map[chan Event]struct{}),
 		state:   "running",

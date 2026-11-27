@@ -98,10 +98,14 @@ const api = {
   cliJobCancel: () => req('/api/v1/clis/job/cancel', { method: 'POST' }),
   saveCli: (payload) => req('/api/v1/clis/config', { method: 'POST', body: JSON.stringify(payload) }),
   resetCli: (id) => req('/api/v1/clis/reset', { method: 'POST', body: JSON.stringify({ id }) }),
+  gateway: (withMetrics) => req(`/api/v1/gateway${withMetrics ? '?metrics=1' : ''}`),
+  saveGateway: (payload) => req('/api/v1/gateway/config', { method: 'POST', body: JSON.stringify(payload) }),
+  gatewayInstall: () => req('/api/v1/gateway/install', { method: 'POST', body: '{}' }),
+  gatewayAction: (action) => req(`/api/v1/gateway/${action}`, { method: 'POST', body: '{}' }),
   installLocal: (payload) => req('/api/v1/install', { method: 'POST', body: JSON.stringify(payload) }),
   sessions: () => req('/api/v1/sessions').then((r) => r.sessions || []),
   spawn: (options) => req('/api/v1/sessions', { method: 'POST', body: JSON.stringify(options) })
-    .then((r) => ({ ok: true, ...r.session }))
+    .then((r) => ({ ok: true, warning: r.warning || '', ...r.session }))
     .catch((error) => ({ ok: false, error: String(error.message || error) })),
   write: (id, data) => req(`/api/v1/sessions/${encodeURIComponent(id)}/input`, {
     method: 'POST',
@@ -682,14 +686,20 @@ function sessionAvatarHTML(session, size) {
   });
 }
 
+// isChatSession 判断这个终端是不是「项目对话」开的（标题前缀由 daemon 设置）。
+function isChatSession(session) {
+  return String(session && session.title || '').startsWith('项目对话');
+}
+
 function termRow(session) {
   const item = document.createElement('div');
-  const isChat = String(session.title || '').startsWith('项目对话');
+  const isChat = isChatSession(session);
   item.className = `term${session.id === activeId ? ' selected' : ''}${isChat ? ' chat' : ''}`;
   item.dataset.state = session.state || 'running';
   item.innerHTML = `
     <span class="term-ava"></span>
     <span class="term-name"></span>
+    <span class="term-gw" title="请求经内置 agentgateway 转发"${session.routed ? '' : ' hidden'}>网关</span>
     <button class="term-close" type="button" title="关闭">×</button>`;
   const avaEl = item.querySelector('.term-ava');
   const avatar = sessionAvatarHTML(session, 16);
@@ -1289,6 +1299,8 @@ function renderTermBar() {
   if (termAva) termAva.innerHTML = barAvatar;
   if (termDot) termDot.hidden = Boolean(barAvatar);
   termCwd.textContent = session ? session.cwd : '';
+  const termGw = $('termGw');
+  if (termGw) termGw.hidden = !session || !session.routed;
   termRestart.hidden = !session;
   termClose.hidden = !session;
   if (!session) {
@@ -1417,19 +1429,42 @@ async function createSession({ command, cwd, agent = '' }) {
     alert(`启动失败：${result.error}`);
     return;
   }
-  attachSession({ id: result.id, label: command, cwd: result.cwd, state: 'running', agent: result.agent || agent });
+  attachSession({ id: result.id, label: command, cwd: result.cwd, state: 'running', agent: result.agent || agent, routed: result.routed });
+  // 勾了接管却没接上时提示一次，别每开一个终端都弹。
+  if (result.warning && !createSession.warned) {
+    createSession.warned = true;
+    alert(result.warning);
+  }
   // 新建终端后直接进入它的对话页。
   if (typeof switchTab === 'function') switchTab('terminal');
+}
+
+// sessionCommand 按当前设置重建 CLI 启动命令（路径、参数、网关接管都是最新的）；
+// 自定义命令（没有 agent）原样返回。
+async function sessionCommand(session) {
+  if (!session.agent) return session.command;
+  const list = await api.listClis().catch(() => []);
+  const cli = list.find((c) => c.id === session.agent);
+  return cli ? cliCommand(cli) : session.command;
 }
 
 // 用同样的命令和工作目录重新开一个终端。
 async function restartActive() {
   const session = sessions.get(activeId);
   if (!session) return;
-  const { command, cwd } = session;
+  // 项目对话重启 = 重开一段对话，留在项目对话页。
+  if (isChatSession(session) && typeof startProjectChat === 'function') {
+    api.kill(session.id);
+    removeSession(session.id);
+    await startProjectChat();
+    return;
+  }
+  const { cwd, agent } = session;
+  const command = await sessionCommand(session);
   api.kill(session.id);
   removeSession(session.id);
-  await createSession({ command, cwd });
+  // 带上 agent：接管是按 CLI 判定的，丢了就悄悄退回直连上游。
+  await createSession({ command, cwd, agent: agent || '' });
 }
 
 // attachSession 把 daemon 里已有的会话接到界面上（刷新后也能恢复）。
@@ -1444,6 +1479,7 @@ function attachSession(info, focus = true) {
     cwd: info.cwd,
     state: info.state || 'running',
     agent: info.agent || '',
+    routed: Boolean(info.routed),
   };
   sessions.set(session.id, session);
   makeTerminal(session);
@@ -2350,6 +2386,10 @@ function setSettingsTab(tab) {
   }
   $('paneCli').hidden = tab !== 'cli';
   $('paneWf').hidden = tab !== 'wf';
+  const gw = $('paneGateway');
+  if (gw) gw.hidden = tab !== 'gateway';
+  if (tab === 'gateway') loadGateway().catch(() => {});
+  else stopGatewayPoll();
   const look = $('paneLook');
   if (look) look.hidden = tab !== 'look';
   const about = $('paneAbout');
@@ -2497,7 +2537,16 @@ $('termFork').addEventListener('click', async () => {
   const session = sessions.get(activeId);
   if (!session) return;
   ctxWarned.delete(session.id);
-  await createSession({ command: session.command, cwd: session.cwd, agent: session.agent || '' });
+  // 项目对话里的「换新终端」等于开一段新对话，别把人甩到 SOP 开发去。
+  if (isChatSession(session) && typeof startProjectChat === 'function') {
+    await startProjectChat();
+    return;
+  }
+  await createSession({
+    command: await sessionCommand(session),
+    cwd: session.cwd,
+    agent: session.agent || '',
+  });
 });
 // —— 项目对话：左侧每个项目下的只读入口，右侧固定显示项目资料 ——
 // 和 SOP 开发完全分开：这里不建流水线、不写 artifacts，只读项目现状。
@@ -2567,6 +2616,376 @@ function renderChatBar() {
   modeSel.value = chatState.mode;
 }
 
+// —— 项目仓库：GitHub / AtomGit 一级入口 ——
+// 只读项目的 git 远端（/api/v1/projects/git），接上了就显示 owner/repo，点一下打开仓库网页。
+// 没接上就灰着，点一下说清楚当前远端在哪，不编造状态。
+const repoState = { root: '', info: null, at: 0 };
+
+const GH_MARK = '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>';
+
+const REPO_CHIPS = [
+  { platform: 'github', id: 'repoGithub', label: 'GitHub' },
+  { platform: 'atomgit', id: 'repoAtomgit', label: 'AtomGit' },
+];
+
+function repoFor(platform) {
+  const list = (repoState.info && repoState.info.repos) || [];
+  return list.find((repo) => repo.platform === platform) || null;
+}
+
+async function loadProjectRepos(root, force) {
+  if (!root) {
+    repoState.root = '';
+    repoState.info = null;
+    renderRepoChips();
+    return;
+  }
+  // 切换项目或超过 30 秒才重新取，免得来回切页一直打 daemon。
+  if (!force && repoState.root === root && Date.now() - repoState.at < 30000) {
+    renderRepoChips();
+    return;
+  }
+  if (repoState.root !== root) {
+    // 换项目了，先别拿上一个项目的仓库顶上；弹窗开着也关掉，免得看到别的项目。
+    repoState.info = null;
+    renderRepoChips();
+    if (typeof closeRepoModal === 'function' && !$('repoModal').hidden) closeRepoModal();
+  }
+  repoState.root = root;
+  repoState.at = Date.now();
+  try {
+    repoState.info = await req(`/api/v1/projects/git?root=${encodeURIComponent(root)}`);
+  } catch {
+    repoState.info = null;
+  }
+  renderRepoChips();
+}
+
+function renderRepoChips() {
+  const box = $('chatRepos');
+  if (!box) return;
+  // 读出来之前不占位，免得先闪一下「未连接」再变。
+  box.hidden = !repoState.info;
+  if (!repoState.info) return;
+  const branch = repoState.info.branch || '';
+  for (const chip of REPO_CHIPS) {
+    const btn = $(chip.id);
+    if (!btn) continue;
+    const repo = repoFor(chip.platform);
+    btn.className = `chat-repo${repo ? ' on' : ''}`;
+    btn.innerHTML = '';
+    const logo = document.createElement('span');
+    logo.className = `repo-logo ${chip.platform}`;
+    if (chip.platform === 'github') logo.innerHTML = GH_MARK;
+    else logo.textContent = 'A';
+    const brand = document.createElement('span');
+    brand.className = 'repo-brand';
+    brand.textContent = chip.label;
+    const name = document.createElement('span');
+    name.className = 'repo-name';
+    name.textContent = repo ? repo.slug : '未连接';
+    btn.append(logo, brand, name);
+    const info = repoState.info;
+    btn.title = repo
+      ? `${chip.label} · ${repo.remote}${branch ? ` · 分支 ${branch}` : ''}\n点击看仓库详情（拉取 / 推送）`
+      : info && info.isRepo
+        ? `这个项目的远端不在 ${chip.label} 上`
+        : '这个项目还不是 git 仓库';
+  }
+}
+
+// —— 仓库详情弹窗：本地同步状态 + 平台信息 + 令牌 ——
+// 同步操作都走本机 git（凭据由系统管理）；平台信息只读，令牌只发给对应平台。
+const repoView = { platform: '', busy: false, sync: null, info: null };
+
+// 平台接口有匿名限流（GitHub 60 次/小时），同一项目同一平台 60 秒内复用结果。
+const repoInfoCache = new Map();
+
+const REPO_PLATFORM_NAME = { github: 'GitHub', atomgit: 'AtomGit' };
+
+function repoPlatformName(platform) {
+  return REPO_PLATFORM_NAME[platform] || platform;
+}
+
+function openRepoChip(chip) {
+  const repo = repoFor(chip.platform);
+  if (!repo) {
+    const info = repoState.info;
+    if (!info || !info.isRepo) {
+      boardToast?.('这个项目还不是 git 仓库；先在终端里 git init 并关联远端');
+      return;
+    }
+    const others = (info.repos || []).map((item) => `${item.host}/${item.slug}`);
+    boardToast?.(others.length ? `项目远端在 ${others.join('、')}，不是 ${chip.label}` : `项目没有 ${chip.label} 远端`);
+    return;
+  }
+  openRepoModal(chip.platform).catch(() => {});
+}
+
+function closeRepoModal() {
+  const modal = $('repoModal');
+  if (modal) modal.hidden = true;
+}
+
+async function openRepoModal(platform) {
+  const repo = repoFor(platform);
+  if (!repo || !repoState.root) return;
+  repoView.platform = platform;
+  repoView.sync = null;
+  repoView.info = null;
+  $('repoTitle').textContent = `${repoPlatformName(platform)} 仓库`;
+  $('repoSub').textContent = `${repo.slug} · ${repo.remote}`;
+  $('repoOpenWeb').href = repo.url;
+  $('repoFetch').title = `git fetch ${repo.remoteName || ''} --prune`.replace('  ', ' ');
+  $('repoVisibility').textContent = '—';
+  $('repoBranch').textContent = '—';
+  $('repoSyncState').textContent = '正在读取…';
+  $('repoOutput').hidden = true;
+  $('repoOutput').textContent = '';
+  $('repoMeta').hidden = true;
+  $('repoMeta').textContent = '';
+  $('repoTokenBox').hidden = true;
+  $('repoTokenInput').value = '';
+  $('repoCommits').innerHTML = '';
+  $('repoPulls').innerHTML = '';
+  $('repoFootHint').textContent = '—';
+  setRepoBusy(true);
+  $('repoModal').hidden = false;
+  await refreshRepoModal();
+}
+
+async function refreshRepoModal(force) {
+  const root = repoState.root;
+  const platform = repoView.platform;
+  if (!root || !platform) return;
+  setRepoBusy(true);
+  const cacheKey = `${root}|${platform}`;
+  const cached = repoInfoCache.get(cacheKey);
+  const useCache = !force && cached && Date.now() - cached.at < 60000;
+  const [sync, info] = await Promise.all([
+    req(`/api/v1/projects/git/sync?root=${encodeURIComponent(root)}`).catch((error) => ({ error: error.message || '读不到本地状态' })),
+    useCache
+      ? Promise.resolve(cached.info)
+      : req(`/api/v1/projects/repo?root=${encodeURIComponent(root)}&platform=${platform}`)
+        .then((data) => {
+          repoInfoCache.set(cacheKey, { info: data, at: Date.now() });
+          return data;
+        })
+        .catch((error) => ({ error: error.message || '读不到平台信息' })),
+  ]);
+  repoView.sync = sync;
+  repoView.info = info;
+  renderRepoSync(sync);
+  renderRepoInfo(info);
+  setRepoBusy(false);
+}
+
+function setRepoBusy(busy) {
+  repoView.busy = busy;
+  $('repoRefresh').disabled = busy;
+  applyRepoButtons();
+}
+
+// applyRepoButtons 按当前同步状态决定「获取 / 拉取 / 推送」能不能点。
+function applyRepoButtons() {
+  const sync = repoView.sync;
+  const busy = repoView.busy;
+  const isRepo = !!(sync && sync.isRepo);
+  const hasUpstream = !!(sync && sync.upstream);
+  $('repoFetch').disabled = busy || !isRepo;
+  $('repoPull').disabled = busy || !hasUpstream;
+  $('repoPush').disabled = busy || !hasUpstream;
+}
+
+function renderRepoSync(sync) {
+  const el = $('repoSyncState');
+  if (!sync || sync.error) {
+    el.textContent = (sync && sync.error) || '读不到本地状态';
+    applyRepoButtons();
+    return;
+  }
+  if (!sync.isRepo) {
+    el.textContent = '这个项目还不是 git 仓库';
+    applyRepoButtons();
+    return;
+  }
+  const parts = [];
+  if (sync.branch) parts.push(`分支 ${sync.branch}`);
+  if (sync.upstream) parts.push(`领先 ${sync.ahead} · 落后 ${sync.behind}`);
+  if (sync.dirty) parts.push(`未提交 ${sync.dirty} 个文件`);
+  el.textContent = parts.join(' · ') || '本地 git 仓库';
+  $('repoBranch').textContent = sync.upstream ? `跟踪 ${sync.upstream}` : '';
+  applyRepoButtons();
+}
+
+function renderRepoInfo(info) {
+  if (!info) return;
+  const visibility = $('repoVisibility');
+  const meta = $('repoMeta');
+  if (info.error) {
+    visibility.textContent = '未知';
+    meta.hidden = false;
+    meta.textContent = info.error;
+  } else {
+    visibility.textContent = info.private ? '私有' : '公开';
+    const bits = [];
+    if (info.description) bits.push(info.description);
+    if (info.language) bits.push(info.language);
+    if (info.stars) bits.push(`★ ${info.stars}`);
+    if (info.openIssues) bits.push(`开启的 Issue / PR ${info.openIssues}`);
+    if (info.defaultBranch) bits.push(`默认分支 ${info.defaultBranch}`);
+    meta.hidden = !bits.length;
+    meta.textContent = bits.join(' · ');
+  }
+  fillRepoList($('repoCommits'), info.commits, (item) => ({
+    href: item.url,
+    head: item.sha.slice(0, 7),
+    title: item.message || '（无提交信息）',
+    tail: [item.author, (item.date || '').slice(0, 16).replace('T', ' ')].filter(Boolean).join(' · '),
+  }), '没有读到提交');
+  fillRepoList($('repoPulls'), info.pulls, (item) => ({
+    href: item.url,
+    head: `#${item.number}`,
+    title: item.title || '（无标题）',
+    tail: [item.author, (item.updatedAt || '').slice(0, 16).replace('T', ' ')].filter(Boolean).join(' · '),
+  }), '没有未合并的合并请求');
+  // 缺令牌或已经存过令牌时才显示令牌框。
+  $('repoTokenBox').hidden = !(info.needToken || info.tokenSet);
+  $('repoTokenClear').hidden = !info.tokenSet;
+  const hint = $('repoTokenHint');
+  if (info.needToken) {
+    hint.textContent = `${repoPlatformName(info.platform)} 私有仓库需要令牌；只发给 ${repoPlatformName(info.platform)}，不会写进日志。`;
+  } else if (info.tokenSet) {
+    hint.textContent = `已配置 ${repoPlatformName(info.platform)} 令牌。`;
+  }
+  $('repoFootHint').textContent = info.warning || (info.tokenSealed ? '令牌用系统密钥库加密保存' : '令牌保存在本机配置文件（0600）');
+  $('repoOpenWeb').hidden = !info.url;
+  if (info.url) $('repoOpenWeb').href = info.url;
+}
+
+// fillRepoList 渲染提交 / 合并请求列表，空和失败都给一句话，不留空白。
+function fillRepoList(list, items, build, emptyText) {
+  list.innerHTML = '';
+  if (!items || !items.length) {
+    const li = document.createElement('li');
+    li.className = 'repo-empty';
+    li.textContent = emptyText;
+    list.appendChild(li);
+    return;
+  }
+  for (const item of items) {
+    const view = build(item);
+    const li = document.createElement('li');
+    const link = document.createElement(view.href ? 'a' : 'span');
+    if (view.href) {
+      link.href = view.href;
+      link.target = '_blank';
+      link.rel = 'noreferrer';
+    }
+    link.className = 'repo-item';
+    const head = document.createElement('code');
+    head.textContent = view.head;
+    const title = document.createElement('span');
+    title.className = 'repo-item-title';
+    title.textContent = view.title;
+    link.append(head, title);
+    li.appendChild(link);
+    if (view.tail) {
+      const tail = document.createElement('small');
+      tail.textContent = view.tail;
+      li.appendChild(tail);
+    }
+    list.appendChild(li);
+  }
+}
+
+async function runRepoSyncAction(action) {
+  if (repoView.busy) return;
+  const verb = { fetch: '获取', pull: '拉取', push: '推送' }[action] || action;
+  const repo = repoFor(repoView.platform);
+  setRepoBusy(true);
+  $('repoSyncState').textContent = `${verb}中…`;
+  try {
+    const result = await req('/api/v1/projects/git/sync', {
+      method: 'POST',
+      body: JSON.stringify({
+        root: repoState.root,
+        action,
+        // 获取只抓这个平台的远端，别因为另一个平台的凭据问题一起失败。
+        remote: action === 'fetch' ? (repo?.remoteName || '') : '',
+      }),
+    });
+    const out = $('repoOutput');
+    out.hidden = false;
+    const lines = [`${verb}${result.ok ? '完成' : '失败'}${result.error ? `：${result.error}` : ''}`, result.output || ''];
+    if (!result.ok && /authentication failed|access denied|permission denied|could not read/i.test(result.output || '')) {
+      lines.push('凭据没配好：在终端里对这个远端手动 git fetch 一次完成登录，或改用 SSH / 访问令牌。AgentDeck 不保存 git 凭据。');
+    }
+    out.textContent = lines.filter(Boolean).join('\n');
+    renderRepoSync(result.status || repoView.sync);
+    if (result.status) repoView.sync = result.status;
+    // 同步完远端可能变了，顺手把仓库行和平台信息刷新一下。
+    if (result.ok) {
+      loadProjectRepos(repoState.root, true).catch(() => {});
+      refreshRepoModal(true).catch(() => {});
+    }
+  } catch (error) {
+    const out = $('repoOutput');
+    out.hidden = false;
+    out.textContent = `${verb}失败：${error.message || error}`;
+  } finally {
+    setRepoBusy(false);
+  }
+}
+
+async function saveRepoToken(token) {
+  try {
+    await req('/api/v1/repo-token', {
+      method: 'POST',
+      body: JSON.stringify({ platform: repoView.platform, token }),
+    });
+    $('repoTokenInput').value = '';
+    boardToast?.(token ? '令牌已保存，只存在本机' : '令牌已清除');
+    repoInfoCache.delete(`${repoState.root}|${repoView.platform}`);
+    await refreshRepoModal(true);
+  } catch (error) {
+    alert(`保存令牌失败：${error.message || error}`);
+  }
+}
+
+for (const chip of REPO_CHIPS) {
+  $(chip.id)?.addEventListener('click', () => openRepoChip(chip));
+}
+$('repoClose').addEventListener('click', closeRepoModal);
+$('repoRefresh').addEventListener('click', () => refreshRepoModal(true).catch(() => {}));
+$('repoFetch').addEventListener('click', () => runRepoSyncAction('fetch'));
+$('repoPull').addEventListener('click', () => runRepoSyncAction('pull'));
+$('repoPush').addEventListener('click', () => runRepoSyncAction('push'));
+$('repoTokenSave').addEventListener('click', () => {
+  const value = $('repoTokenInput').value.trim();
+  if (!value) {
+    $('repoTokenInput').focus();
+    return;
+  }
+  saveRepoToken(value);
+});
+$('repoTokenClear').addEventListener('click', () => saveRepoToken(''));
+$('repoTokenInput').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    $('repoTokenSave').click();
+  }
+});
+$('repoModal').addEventListener('click', (event) => {
+  if (event.target === $('repoModal')) closeRepoModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !$('repoModal').hidden) {
+    event.preventDefault();
+    closeRepoModal();
+  }
+});
+
 async function saveChatPref() {
   if (!state.active) return;
   try {
@@ -2585,6 +3004,8 @@ async function openProjectChat(project, focusSession) {
   if (!project) return;
   await selectProject(project);
   await loadChatPrefs(project.path);
+  // 顺带刷一下这个项目的 GitHub / AtomGit 入口状态。
+  loadProjectRepos(project.path).catch(() => {});
   state.view = 'chat';
   let existing = focusSession || [...sessions.values()].find(
     (item) => String(item.title || '').startsWith('项目对话') && isUnder(item.cwd, project.path),
@@ -2611,7 +3032,18 @@ async function startProjectChat() {
   const btn = $('chatNew');
   if (btn) btn.disabled = true;
   try {
-    const result = await api.projectChat(state.active, { agent: chatState.agent, mode: chatState.mode });
+    let result = await api.projectChat(state.active, { agent: chatState.agent, mode: chatState.mode });
+    // 这个项目还没选过「发不发提示词」，先问一次，别擅自发。
+    if (result && result.needChoice) {
+      const choice = await askChatPrompt(result.prompt);
+      if (!choice) return;
+      result = await api.projectChat(state.active, {
+        agent: chatState.agent,
+        mode: chatState.mode,
+        sendPrompt: choice.send,
+        remember: choice.remember,
+      });
+    }
     if (result?.session) {
       chatState.agent = result.agent || chatState.agent;
       chatState.mode = result.mode || chatState.mode;
@@ -2626,6 +3058,45 @@ async function startProjectChat() {
     if (btn) btn.disabled = false;
   }
 }
+
+// askChatPrompt 弹一次「发不发现状提示词」，返回 {send, remember}；取消返回 null。
+let chatPromptResolve = null;
+
+function askChatPrompt(text) {
+  const modal = $('chatPromptModal');
+  $('chatPromptText').textContent = text || '';
+  $('chatPromptRemember').checked = true;
+  modal.hidden = false;
+  return new Promise((resolve) => {
+    chatPromptResolve = resolve;
+  });
+}
+
+function closeChatPrompt(choice) {
+  $('chatPromptModal').hidden = true;
+  const resolve = chatPromptResolve;
+  chatPromptResolve = null;
+  if (resolve) resolve(choice);
+}
+
+$('chatPromptSend').addEventListener('click', () => closeChatPrompt({
+  send: true,
+  remember: $('chatPromptRemember').checked,
+}));
+$('chatPromptSkip').addEventListener('click', () => closeChatPrompt({
+  send: false,
+  remember: $('chatPromptRemember').checked,
+}));
+$('chatPromptCancel')?.addEventListener('click', () => closeChatPrompt(null));
+$('chatPromptModal').addEventListener('click', (event) => {
+  if (event.target === $('chatPromptModal')) closeChatPrompt(null);
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !$('chatPromptModal').hidden) {
+    event.preventDefault();
+    closeChatPrompt(null);
+  }
+});
 
 $('chatCli').addEventListener('change', () => {
   chatState.agent = $('chatCli').value;
@@ -2724,7 +3195,7 @@ $('cliJobCancel').addEventListener('click', async () => {
   try { await api.cliJobCancel(); } catch (error) { alert(`取消失败：${error.message || error}`); }
   loadCliJob();
 });
-$('settingsClose').addEventListener('click', () => { $('settingsModal').hidden = true; });
+$('settingsClose').addEventListener('click', () => { $('settingsModal').hidden = true; stopGatewayPoll(); });
 $('settingsModal').addEventListener('click', (event) => {
   if (event.target === $('settingsModal')) $('settingsModal').hidden = true;
 });
@@ -2732,6 +3203,14 @@ $('wfPanelToggle').addEventListener('change', (event) => setPanelVisible(event.t
 $('wfPanelOpen').addEventListener('click', () => {
   setPanelVisible(true);
   $('settingsModal').hidden = true;
+});
+$('chatPromptReset')?.addEventListener('click', async () => {
+  try {
+    await req('/api/v1/projects/chat/prompt/reset', { method: 'POST' });
+    boardToast?.('已清除记住的选择，下次打开项目对话会重新询问');
+  } catch (error) {
+    boardToast?.(`清除失败：${error.message || error}`);
+  }
 });
 $('pkgCancel').addEventListener('click', closePkgPrompt);
 $('pkgOk').addEventListener('click', () => { confirmPkgPrompt(); });

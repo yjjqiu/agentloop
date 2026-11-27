@@ -27,18 +27,20 @@ func (a *App) registerChatRoutes(mux *http.ServeMux) {
 		}
 		pref := a.config.ChatPrefFor(root)
 		writeJSON(w, http.StatusOK, map[string]any{
-			"root":  root,
-			"agent": pref.Agent,
-			"mode":  pref.Mode,
+			"root":       root,
+			"agent":      pref.Agent,
+			"mode":       pref.Mode,
+			"sendPrompt": pref.SendPrompt, // null 表示还没选过
 		})
 	})
 
 	// POST /config：只保存偏好，不开对话（下拉改完立即落盘，下次新对话生效）。
 	mux.HandleFunc("POST /api/v1/projects/chat/config", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Root  string `json:"root"`
-			Agent string `json:"agent"`
-			Mode  string `json:"mode"`
+			Root       string `json:"root"`
+			Agent      string `json:"agent"`
+			Mode       string `json:"mode"`
+			SendPrompt *bool  `json:"sendPrompt"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "请求体不是 JSON")
@@ -49,16 +51,31 @@ func (a *App) registerChatRoutes(mux *http.ServeMux) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		pref := ChatPref{Agent: strings.TrimSpace(body.Agent), Mode: strings.TrimSpace(body.Mode)}
+		pref := a.config.ChatPrefFor(root)
+		pref.Agent = strings.TrimSpace(body.Agent)
+		pref.Mode = strings.TrimSpace(body.Mode)
+		if body.SendPrompt != nil {
+			pref.SendPrompt = body.SendPrompt
+		}
 		a.config.SetChatPref(root, pref)
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "root": root, "agent": pref.Agent, "mode": pref.Mode})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": true, "root": root, "agent": pref.Agent, "mode": pref.Mode, "sendPrompt": pref.SendPrompt,
+		})
+	})
+
+	// POST /prompt/reset：清掉所有项目记住的选择，下次打开重新问。
+	mux.HandleFunc("POST /api/v1/projects/chat/prompt/reset", func(w http.ResponseWriter, r *http.Request) {
+		a.config.ClearChatPromptChoice()
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
 
 	mux.HandleFunc("POST /api/v1/projects/chat", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Root  string `json:"root"`
-			Agent string `json:"agent"`
-			Mode  string `json:"mode"`
+			Root       string `json:"root"`
+			Agent      string `json:"agent"`
+			Mode       string `json:"mode"`
+			SendPrompt *bool  `json:"sendPrompt"` // 这次发不发提示词
+			Remember   *bool  `json:"remember"`   // 要不要记住（默认记住）
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Root) == "" {
 			writeError(w, http.StatusBadRequest, "缺少 root")
@@ -69,31 +86,55 @@ func (a *App) registerChatRoutes(mux *http.ServeMux) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		pref := a.config.ChatPrefFor(root)
+		// 这次没指定就按记住的选择；都没有就先问一次，别擅自发送。
+		decision := pref.SendPrompt
+		if body.SendPrompt != nil {
+			decision = body.SendPrompt
+		}
+		if decision == nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok":         false,
+				"needChoice": true,
+				"prompt":     projectChatPrompt,
+			})
+			return
+		}
+		prompt := projectChatPrompt
+		if !*decision {
+			prompt = ""
+		}
 		agent, ok := a.pickChatAgent(root, strings.TrimSpace(body.Agent))
 		if !ok {
 			writeError(w, http.StatusBadRequest, "没有可用的 CLI，请先在设置里安装或指定路径")
 			return
 		}
 		def, mode := chatCommandDef(a.config.CliOverridesSnapshot(), agent, strings.TrimSpace(body.Mode))
-		command := buildAgentCommand(def, agent.Path, projectChatPrompt)
-		session, err := a.sessions.Start(command, root)
+		routeEnv, routeArgs := a.gateway.Takeover(agent.ID)
+		command := buildAgentCommand(def, agent.Path, prompt, routeArgs)
+		session, err := a.sessions.Start(command, root, routeEnv, len(routeEnv) > 0 || len(routeArgs) > 0)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		session.SetAgent(agent.ID)
 		session.SetTitle("项目对话 · " + baseName(root))
-		// 记住这次的选择，下次点「项目对话」直接沿用。
-		a.config.SetChatPref(root, ChatPref{Agent: agent.ID, Mode: mode})
+		// 记住这次的选择，下次打开不再问。
+		pref.Agent, pref.Mode = agent.ID, mode
+		if body.SendPrompt != nil && (body.Remember == nil || *body.Remember) {
+			pref.SendPrompt = body.SendPrompt
+		}
+		a.config.SetChatPref(root, pref)
 		// 位置参数型 CLI 直接把提示词带进命令行；其余等 TUI 起来后再输入。
-		if agent.Prompt != "positional" {
-			go a.pipes.injectPrompt(session.ID, projectChatPrompt, true)
+		if prompt != "" && agent.Prompt != "positional" {
+			go a.pipes.injectPrompt(session.ID, prompt, true)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"ok":      true,
-			"agent":   agent.ID,
-			"mode":    mode,
-			"session": session.Snapshot(),
+			"ok":         true,
+			"agent":      agent.ID,
+			"mode":       mode,
+			"sendPrompt": prompt != "",
+			"session":    session.Snapshot(),
 		})
 	})
 }

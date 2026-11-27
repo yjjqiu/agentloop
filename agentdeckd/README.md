@@ -43,6 +43,10 @@ Windows / Linux / macOS 都能编译：PTY 按平台拆在 `platform_windows.go`
 | `workflows.go` | LoopForge 工作流扫描与本机安装状态 |
 | `project_overview.go` | 项目资料看板：文档扫描、任务产物、目录树、Git 状态与单文件预览 |
 | `project_chat.go` | 「项目对话」入口：在项目根目录开一个只读现状的 CLI 终端，不进流水线 |
+| `project_repo.go` | 项目对话页的 GitHub / AtomGit 入口：解析项目根的 git 远端，判断接在哪个平台、对应哪个仓库 |
+| `git_sync.go` | 仓库同步：本地领先 / 落后统计，`git fetch / pull --ff-only / push`（凭据走系统 git） |
+| `repo_api.go` | 平台只读接口：GitHub REST v3 与 AtomGit v5 的仓库详情、最近提交、未合并合并请求 |
+| `secrets.go` / `secrets_windows.go` | 访问令牌加密落盘：Windows 用 DPAPI，其它平台退回 0600 明文 |
 | `context_usage.go` | 终端上下文额度：Claude / Codex 读会话记录，其它 CLI 扫终端文字兜底 |
 | `config.go` / `versions.go` / `releases.go` / `install.go` 等 | 配置持久化、版本检查、更新说明拉取、npm 安装任务 |
 | `version.go` | 版本号（`var version`，发版用 ldflags 覆盖）与发布仓库 `yjjqiu/agentloop` |
@@ -162,10 +166,16 @@ CLI 列表顶部有两个版本操作：
 | GET | `/api/v1/workflows?root=` | 扫 `artifacts/*/workflow-state.json` |
 | GET | `/api/v1/projects/overview?root=` | 项目资料看板：`{root,name,git{branch,dirty,changed[],commits[]},docs[],manifests[],artifacts[],tree[],scannedAt}`；`root` 必须是已登记项目 |
 | GET | `/api/v1/projects/file?path=` | 预览单个文本文件 `{path,name,size,modTime,content}`；限已登记项目内、≤512KB、非二进制 |
-| POST | `/api/v1/projects/chat` | 「项目对话」：在项目根目录开一个终端并注入现状调查提示词 `{root, agent?, mode?}`，返回 `{ok,agent,mode,session}` |
-| GET | `/api/v1/projects/chat/config?root=` | 读该项目的项目对话偏好：`{root,agent,mode}`（没存过时为空） |
-| POST | `/api/v1/projects/chat/config` | 保存项目对话偏好 `{root,agent,mode}`，下次「新对话」按它启动 |
-| GET/POST | `/api/v1/config` | 读取/保存 `lastCwd`、`localBin` |
+| POST | `/api/v1/projects/chat` | 「项目对话」：在项目根目录开一个终端 `{root, agent?, mode?, sendPrompt?, remember?}`；没选过发不发提示词时返回 `{ok:false,needChoice:true,prompt}`，选过才开终端，返回 `{ok,agent,mode,sendPrompt,session}` |
+| GET | `/api/v1/projects/chat/config?root=` | 读该项目的项目对话偏好：`{root,agent,mode,sendPrompt}`（`sendPrompt` 为 `null` 表示还没选过） |
+| POST | `/api/v1/projects/chat/config` | 保存项目对话偏好 `{root,agent,mode,sendPrompt?}`，下次「新对话」按它启动 |
+| POST | `/api/v1/projects/chat/prompt/reset` | 清掉所有项目记住的「发不发提示词」选择，下次打开重新询问 |
+| GET | `/api/v1/projects/git?root=` | 项目仓库入口：读 `git remote -v` + 当前分支，返回 `{isRepo,branch,repos[{platform,remoteName,host,owner,name,slug,url,remote}]}`；`platform` 是 `github` / `atomgit` / `other`，不联网 |
+| GET | `/api/v1/projects/git/sync?root=` | 本地同步状态：`{isRepo,branch,upstream,ahead,behind,dirty}`，纯本地 |
+| POST | `/api/v1/projects/git/sync` | 执行同步 `{root,action:fetch\|pull\|push,remote?}`，返回 `{ok,action,output,status,error?}`；`fetch` 只抓指定远端，凭据走系统 git |
+| GET | `/api/v1/projects/repo?root=&platform=` | 平台仓库信息：`{slug,url,private,defaultBranch,stars,openIssues,commits[],pulls[],tokenSet,needToken,error,warning}`；需要令牌时 `needToken=true` |
+| POST | `/api/v1/repo-token` | 保存/清除平台令牌 `{platform,token}`（空串清除）；只回 `{tokenSet,protected}`，不回显令牌 |
+| GET/POST | `/api/v1/config` | 读取/保存 `lastCwd`、`localBin`，以及 `githubToken` / `atomgitToken`（写入后加密落盘） |
 | GET | `/api/v1/fs/list?path=` | 浏览器模式的目录浏览：`{path,parent,home,dirs[],roots[]}`，`roots` 是快捷入口（`/workspace` + 环境变量 `AGENTDECK_ROOTS` 里的路径）；隐藏目录不列，传绝对路径可直接进 |
 | POST | `/api/v1/fs/mkdir` | 新建单级目录 `{parent,name}`，返回 `{ok,path}`；名称不允许带 `/`、`\` |
 | GET | `/api/v1/clis` | 探测注册表里的 44 款 CLI，返回 `{id,label,bin,path,installed,enabled,args,defaultArgs,modes[],mode,overridePath,overrideArgs,overrideMode,overridePkg,packageName,detectedPkg,npmManaged,updateCmd,command,repo,stages,fitNote}`，已安装的排前面；`mode` 是当前生效的启动模式，`modes` 是可选预设 |
@@ -177,6 +187,11 @@ CLI 列表顶部有两个版本操作：
 | POST | `/api/v1/clis/install` | 用 npm 全局包安装或更新一款 CLI `{id}`，返回任务快照 |
 | POST | `/api/v1/clis/job/cancel` | 取消正在进行的任务 |
 | GET | `/api/v1/agents` | 同上，附完整 `AgentDef`（args / prompt 传递方式 / note） |
+| GET | `/api/v1/gateway?metrics=1` | 内置 agentgateway 的 `{settings,status,job,logs[],config,defaults,pinnedVersion}`；带 `metrics=1` 时多返回 `{metrics,series[]}` |
+| POST | `/api/v1/gateway/config` | 保存网关设置 `{autoStart,port,adminPort,upstream,upstreamKey,binPath}`，返回 `{ok,settings,config}`（`binPath` 传空表示保留原值） |
+| POST | `/api/v1/gateway/install` | 下载安装 agentgateway（官方源 → 镜像依次重试），进度见 `job` |
+| POST | `/api/v1/gateway/start` \| `stop` \| `restart` | 启停托管进程，返回 `{ok,status}` |
+| GET | `/api/v1/gateway/config.yaml` | 生成的 agentgateway 配置原文（`text/plain`） |
 | GET | `/api/v1/pipeline?root=` | 项目的阶段→CLI 配置 + 所有流水线运行状态 |
 | POST | `/api/v1/pipeline/config` | 保存阶段映射 `{root, stageAgents:{TASK-01:"claude-code",...}, auto?}` |
 | POST | `/api/v1/pipeline/start` | 启动流水线 `{root, slug}` 或 `{root, requirement}`（自动建 artifacts） |
@@ -349,10 +364,13 @@ CLI 表现一致。
 
 ## 项目对话
 
-在项目根目录直接开一个 CLI 终端，第一句就是 `project_chat.go` 里的 `projectChatPrompt`：
-先读 `artifacts/` 的 `workflow-state.json`、README/docs 的功能清单、git 最近提交，
-汇报进度和功能树，并明确要求先不改代码。
+在项目根目录直接开一个 CLI 终端。第一次打开某个项目的对话终端时会先问「要不要发现状提示词」：
 
+- 选「发送并开始」才会把 `project_chat.go` 里的 `projectChatPrompt` 发进去（先读 `artifacts/` 的
+  `workflow-state.json`、README/docs 的功能清单、git 最近提交，汇报进度和功能树，并要求先不改代码）；
+  选「不发」就是干净终端
+- 默认勾选「记住这个选择，以后不再询问」，选择按项目存进 `chatPrefs`，之后打开不再弹窗；
+  想重新问一遍：设置 → 工作流 → 「项目对话提示词 → 重新询问」（清掉所有项目记住的选择）
 - 用哪款 CLI、哪种启动模式：对话页顶部两个下拉（CLI / 启动模式），改完立即落盘，
   点「新对话」按新配置起一个；已有对话时再点左栏「项目对话」直接切回原来那个终端
 - 选择优先级：本次指定 > 该项目保存的偏好 > 该项目 TASK-01 配的 CLI > Claude Code >
@@ -361,6 +379,30 @@ CLI 表现一致。
   其余等 TUI 起来后再注入
 - 只读：不写 `artifacts/`、不动 `workflow-state.json`、不参与流水线调度
 - 会话标题是「项目对话 · <项目名>」，不出现在 SOP 开发的终端列表里，避免重复入口
+- 标题栏下面的「仓库」一行是 GitHub / AtomGit 两个一级入口：接上了显示 `owner/repo`，点开是仓库弹窗
+  （本地拉取 / 推送、最近提交、合并请求、令牌设置，见下节）；没接上灰着显示「未连接」，
+  点一下说明当前远端在哪；数据来自项目根的 `git remote -v`
+- 对话页里点「换新终端 / 重启终端」是重开一段新对话，不会跳到 SOP 开发
+
+## 仓库同步（项目对话页）
+
+点「仓库」行里的 GitHub / AtomGit 入口会打开仓库弹窗，里面是两块能力：
+
+- **本地同步（不碰凭据）**：`git fetch / pull --ff-only / push` 直接在项目目录执行，
+  凭据交给系统 git（SSH key、Git Credential Manager）。后台运行固定带
+  `GIT_TERMINAL_PROMPT=0`、`GCM_INTERACTIVE=never`，缺凭据时立刻失败并原样展示 git 输出，
+  不会卡在等输入；冲突和非快进也留给终端手动处理。`fetch` 只抓这个入口对应的远端
+  （`git fetch <remote> --prune`），避免另一个平台没凭据导致整次失败。
+- **平台信息（只读）**：GitHub 走 REST v3、AtomGit 走 Gitee 兼容的 v5，显示仓库公开 / 私有、
+  默认分支、语言、星标、最近 5 条提交、未合并的合并请求。私有仓库需要令牌（GitHub 用
+  `Authorization: Bearer`，AtomGit 用 `private-token` 头）。
+
+令牌在弹窗里粘贴保存：Windows 用 DPAPI 加密后再写进 `config.json`（换用户 / 换机器都解不开），
+其它平台退回 0600 明文并在界面提示。令牌只在请求对应平台时使用，不进日志、不回显，
+保存接口只返回「有没有设置」。GitHub 这个令牌同时用于私有发布仓库的更新检查。
+
+AtomGit 的仓库详情接口即使公开仓库也要 `private-token`，没有令牌时只显示提交和合并请求；
+公开仓库的 `/commits`、`/pulls` 可以匿名查。
 
 ## 终端上下文额度
 
@@ -436,3 +478,58 @@ CLI 探测走内建的路径索引（`agents.go` 的 `pathIndex`）：`PATH` 和
 - **收尾**：成功后清空版本缓存，前端重新拉 `clis` 和 `clis/versions`，能看到新版本。
 - **非 npm 安装**：`npmManaged` 为 false 且没有 `update` 命令的 CLI 按钮置灰；
   像 pi 这样自带更新命令的走 `pi update`，更新的是实际在用的那份。
+## 内置网关（agentgateway，`gateway*.go`）
+
+设置 → 网关：把 [agentgateway](https://github.com/agentgateway/agentgateway)（Linux Foundation / Apache-2.0，Rust）
+当可选组件托管起来，AgentDeck 负责下载、生成配置、启停、抓指标，以及**按 CLI 接管终端流量**。
+代码按关注点拆开：`gateway.go` 设置与状态、`gateway_install.go` 下载安装、`gateway_config.go`
+配置生成、`gateway_process.go` 进程托管、`gateway_route.go` 终端接管、`gateway_metrics.go` 指标；
+界面对应在 `ui/gateway.js`。
+
+- **二进制**：托管在 `{data}/gateway/`，默认固定版本 `1.7.0`（上游配置结构还在变，不跟 latest 漂）。
+  下载按 `https://github.com/…` → `gh-proxy.com` → `ghfast.top` 依次重试，带 sha256 校验；
+  已经自己装过的可以在「高级」里直接填路径，跳过 100MB 下载。
+- **配置是生成物**：`config.yaml` 由 `RenderConfig()` 按设置生成，唯一真相源是 `config.json` 的 `gateway` 段。
+  上游默认指向本机 magpie（`http://127.0.0.1:3425`，key 用回环短串），provider 用 `anthropic` +
+  `params.apiKey/baseUrl`（1.7 的 schema 只认带类型的 provider，`custom` 过不了校验）。
+  agentgateway 启动后会往文件里回写 `config.session.key`，重新生成配置时会保留它。
+- **进程**：`start/stop/restart` 走 `exec.Cmd`，日志收进 300 行环形缓冲；pid 落 `agentgateway.pid`，
+  daemon 重启后按 pid 认领上次遗留的进程（不会重复拉起撞端口）。POSIX 下子进程自成进程组，停止时整组结束。
+  启动后会等业务端口真正开始监听（最多 5 秒）再返回，避免紧接着的终端/请求撞 `connection refused`。
+- **指标**：抓 stats 端口 `15020`（绑在 `[::]`，管理台 15000 上没有 `/metrics`），按样本名 + 标签精确归并：
+  `agentgateway_requests_total`（status 非 2xx、且不是 101 的算错误——101 是 WebSocket 升级成功）、
+  `agentgateway_gen_ai_client_token_usage_sum`（按 `gen_ai_token_type` 分 input/output）。直方图的桶不参与求和。
+  代理端口上的请求按「连接结束」计数，长连接流式响应会在结束时才进统计。
+- **端口**：业务 4000（会解析协议，带 token 统计）、代理 4001（原样转发，只统计请求数）、管理 15000，都能改；
+  管理台 `http://127.0.0.1:15000/ui/` 自带 LLM Playground。
+- **没装/没开不影响任何其它功能**，删掉 `{data}/gateway/` 就完全回到原状。
+
+### 终端接管（阶段 2）
+
+勾选某款 CLI 后，新开的终端（手动、流水线、项目对话都算）会先打到网关再转发给上游；
+已有终端要重启才生效。实现只动启动方式（环境变量 / 启动参数），不碰 CLI 自己的配置文件。
+
+网关对客户端有两个口，按协议选：
+
+| 口 | 谁走 | 为什么 |
+|----|------|--------|
+| 业务端口（默认 4000） | 说 Anthropic Messages / OpenAI chat 的 CLI | agentgateway 能解析请求，指标里有 token |
+| 代理端口（默认 4001） | 说 Responses（Codex）、原生 generateContent（Gemini）的 CLI | 1.7 转不了这些协议，原样转发最稳，指标里只有请求数 |
+
+当前白名单（`gatewayRoutes`）：
+
+| CLI | 走哪个口 | 怎么接 | 说明 |
+|-----|----------|--------|------|
+| Claude Code | 业务 | 注入 `ANTHROPIC_BASE_URL`，并追加 `--settings {data}/gateway/takeover-claude-code.json` | `~/.claude/settings.json` 的 `env` 块优先级高于进程环境，光改环境变量会被覆盖（实测仍直连上游） |
+| Codex | 代理 | 追加 `-c openai_base_url="http://127.0.0.1:4001/backend-api/codex"` | 实测：TUI 先试 WebSocket（网关转发升级后走通），失败再回退 HTTP POST；`OPENAI_BASE_URL` 环境变量它不认（实测指向死端口仍然成功），必须用 `-c` 覆盖 |
+| Gemini CLI | 代理 | 注入 `GOOGLE_GEMINI_BASE_URL` + `GEMINI_CLI_AUTH_OVERRIDE=gemini-api-key` + `GEMINI_API_KEY` | 0.71 起它的 gateway 鉴权在非交互模式会被自己的校验拒掉（`Invalid auth method selected`），把鉴权方式钉成 API Key 但地址照样跟 env 走；鉴权头上游不校验 |
+| Qwen Code / Aider | 代理 | 注入 `OPENAI_BASE_URL` / `OPENAI_API_BASE`（+ `/v1`、`OPENAI_API_KEY`） | 按 OpenAI 兼容接口转发；本机没装，**未实测**，界面标了「未验证」 |
+
+- 白名单在 `gatewayRoutes`，加一款补一行（`Agent/Label/Via/Env/Path/Args/Note/Verified`）；
+  `Env` 的值支持 `{url}`（网关地址 + 该 CLI 的路径）和 `{key}`（上游 Key）占位。
+- 接管失败一律**放行**：没勾选、二进制没装、网关起不来、设置文件写失败，终端都按原方式启动，
+  日志里留一行；开了接管却没接上时，新建终端会明确提示一次（`POST /api/v1/sessions` 返回 `warning`）。
+- 网关没在跑而接管已开启时，开终端会先自动拉起网关；走代理口的 CLI 还会确认代理口真的在监听，
+  没有就重启一次网关（升级后老进程用的配置里可能还没这个口）。
+- 终端列表和标题栏的「网关」标签表示这个终端的流量确实经网关（靠启动参数接管的也算）；
+  关掉网关或改端口会让已接管的终端断线，需要重开。

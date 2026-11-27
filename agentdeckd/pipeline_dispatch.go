@@ -68,8 +68,10 @@ func (m *PipelineManager) dispatch(run *pipelineRun, stage string) error {
 		return nil
 	}
 
-	command := buildAgentCommand(def, binPath, prompt)
-	session, err := m.app.sessions.Start(command, run.root)
+	// 流水线终端和手动开的终端走同一套接管规则：勾了就走网关，没勾就原样。
+	routeEnv, routeArgs := m.app.gateway.Takeover(agentID)
+	command := buildAgentCommand(def, binPath, prompt, routeArgs)
+	session, err := m.app.sessions.Start(command, run.root, routeEnv, len(routeEnv) > 0 || len(routeArgs) > 0)
 	if err != nil {
 		return fmt.Errorf("启动 %s 失败: %w", def.Name, err)
 	}

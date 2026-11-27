@@ -831,6 +831,13 @@ function applyView() {
   const tab = boardState.tab === 'board' ? 'board' : 'terminal';
   const chatBar = $('chatBar');
   if (chatBar) chatBar.hidden = !chat;
+  // 仓库入口只在项目对话页出现，SOP 开发不掺和。
+  const repoBar = $('chatRepoBar');
+  if (repoBar) repoBar.hidden = !chat;
+  // 第一次进对话页时补一次仓库信息（详情页已经取过就直接用缓存）。
+  if (chat && typeof loadProjectRepos === 'function' && state.active) {
+    loadProjectRepos(state.active).catch(() => {});
+  }
   const tabs = $('sopTabs');
   if (tabs) tabs.hidden = chat;
   document.querySelector('.term-card').hidden = chat ? false : tab !== 'terminal';

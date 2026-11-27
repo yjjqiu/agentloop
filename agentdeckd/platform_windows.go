@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -16,13 +17,17 @@ import (
 
 // —— Windows 平台实现：ConPTY、cmd.exe 包装、npm 全局目录 ——
 
-// startPTY 用 ConPTY 启动命令。
-func startPTY(command, workdir string, cols, rows int) (ptyHost, error) {
-	handle, err := conpty.Start(
-		wrapCommand(command),
+// startPTY 用 ConPTY 启动命令。extraEnv 覆盖继承环境里的同名变量
+// （网关接管时用来改上游地址）；为空时不传，子进程直接继承 daemon 的环境。
+func startPTY(command, workdir string, cols, rows int, extraEnv []string) (ptyHost, error) {
+	opts := []conpty.ConPtyOption{
 		conpty.ConPtyDimensions(cols, rows),
 		conpty.ConPtyWorkDir(workdir),
-	)
+	}
+	if len(extraEnv) > 0 {
+		opts = append(opts, conpty.ConPtyEnv(mergeEnv(os.Environ(), extraEnv)))
+	}
+	handle, err := conpty.Start(wrapCommand(command), opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -106,6 +111,40 @@ func isExeFile(path string) bool {
 	lower := strings.ToLower(path)
 	return strings.HasSuffix(lower, ".exe") || strings.HasSuffix(lower, ".com")
 }
+
+// processAlive 判断 pid 对应的进程是否还在（用 tasklist，不引额外依赖）。
+func processAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	cmd := exec.Command("tasklist", "/FI", "PID eq "+strconv.Itoa(pid), "/NH")
+	hideWindow(cmd)
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	want := strconv.Itoa(pid)
+	for _, line := range strings.Split(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[1] == want {
+			return true
+		}
+	}
+	return false
+}
+
+// killProcessTree 结束进程及其子进程。
+func killProcessTree(pid int) error {
+	if pid <= 0 {
+		return fmt.Errorf("无效的进程号")
+	}
+	cmd := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(pid))
+	hideWindow(cmd)
+	return cmd.Run()
+}
+
+// detachProcess 在 Windows 下不需要额外处理，隐藏窗口由 hideWindow 负责。
+func detachProcess(_ *exec.Cmd) {}
 
 // pathExtensions 返回按优先级排列的候选扩展名（小写）。
 func pathExtensions() []string {

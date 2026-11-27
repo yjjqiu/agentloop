@@ -19,6 +19,8 @@ import (
 type ChatPref struct {
 	Agent string `json:"agent,omitempty"`
 	Mode  string `json:"mode,omitempty"`
+	// SendPrompt 是「打开时要不要先发现状提示词」：nil 表示还没问过，开终端前会问一次。
+	SendPrompt *bool `json:"sendPrompt,omitempty"`
 }
 
 // CliOverride 是某个 CLI 的本地覆盖设置（路径 / 默认参数 / npm 包名 / 是否启用）。
@@ -40,9 +42,11 @@ type Config struct {
 	LocalBin     string                    `json:"localBin"`
 	Pipelines    map[string]PipelineConfig `json:"pipelines,omitempty"`
 	CliOverrides map[string]CliOverride    `json:"cliOverrides,omitempty"`
-	ChatPrefs    map[string]ChatPref       `json:"chatPrefs,omitempty"`   // 项目路径 → 项目对话偏好
-	AuthToken    string                    `json:"authToken,omitempty"`   // 对外监听时的访问令牌
-	GitHubToken  string                    `json:"githubToken,omitempty"` // 私有仓库查更新用的只读 token
+	ChatPrefs    map[string]ChatPref       `json:"chatPrefs,omitempty"`    // 项目路径 → 项目对话偏好
+	AuthToken    string                    `json:"authToken,omitempty"`    // 对外监听时的访问令牌
+	GitHubToken  string                    `json:"githubToken,omitempty"`  // GitHub token：私有仓库查更新 + 仓库面板
+	AtomGitToken string                    `json:"atomgitToken,omitempty"` // AtomGit token：仓库面板
+	Gateway      GatewaySettings           `json:"gateway,omitempty"`      // 内置 agentgateway 的托管设置
 }
 
 // LoadConfig 读配置，文件不存在就用默认值。
@@ -89,18 +93,33 @@ func (c *Config) saveLocked() {
 	_ = os.Chmod(c.path, 0o600)
 }
 
-// GitHubTokenValue 返回私有仓库更新检查用的只读 token（可能为空）。
+// GitHubTokenValue 返回 GitHub token 明文（可能为空）。落盘时是加密的。
 func (c *Config) GitHubTokenValue() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	return c.GitHubToken
+	return openSecret(c.GitHubToken)
 }
 
-// SetGitHubToken 写入只读 token 并立即落盘；空字符串表示清除。
+// SetGitHubToken 加密保存 GitHub token；空字符串表示清除。
 func (c *Config) SetGitHubToken(token string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.GitHubToken = strings.TrimSpace(token)
+	c.GitHubToken = sealSecret(token)
+	c.saveLocked()
+}
+
+// AtomGitTokenValue 返回 AtomGit token 明文（可能为空）。落盘时是加密的。
+func (c *Config) AtomGitTokenValue() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return openSecret(c.AtomGitToken)
+}
+
+// SetAtomGitToken 加密保存 AtomGit token；空字符串表示清除。
+func (c *Config) SetAtomGitToken(token string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.AtomGitToken = sealSecret(token)
 	c.saveLocked()
 }
 
@@ -109,6 +128,21 @@ func (c *Config) AuthTokenValue() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.AuthToken
+}
+
+// GatewaySettingsValue 返回网关设置（零值由调用方补默认）。
+func (c *Config) GatewaySettingsValue() GatewaySettings {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.Gateway
+}
+
+// SetGatewaySettings 保存网关设置并立即落盘。
+func (c *Config) SetGatewaySettings(next GatewaySettings) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Gateway = next
+	c.saveLocked()
 }
 
 // SetAuthToken 写入访问令牌并立即落盘。
@@ -145,6 +179,19 @@ func (c *Config) SetChatPref(root string, pref ChatPref) {
 // chatPrefKey 统一项目路径写法，Windows 下大小写不同也算同一个项目。
 func chatPrefKey(root string) string {
 	return strings.ToLower(filepath.Clean(strings.TrimSpace(root)))
+}
+
+// ClearChatPromptChoice 清掉所有项目「要不要发提示词」的选择，下次打开重新问一遍。
+func (c *Config) ClearChatPromptChoice() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for key, pref := range c.ChatPrefs {
+		if pref.SendPrompt != nil {
+			pref.SendPrompt = nil
+			c.ChatPrefs[key] = pref
+		}
+	}
+	c.saveLocked()
 }
 
 // existsProjects 过滤掉已经不存在的目录。

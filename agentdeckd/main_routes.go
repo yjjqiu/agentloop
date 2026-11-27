@@ -18,7 +18,9 @@ func (a *App) routes(mux *http.ServeMux) {
 	a.registerProjectRoutes(mux)
 	a.registerOverviewRoutes(mux)
 	a.registerChatRoutes(mux)
+	a.registerRepoRoutes(mux)
 	a.registerCliRoutes(mux)
+	a.registerGatewayRoutes(mux)
 	a.registerPipelineRoutes(mux)
 	a.registerSessionRoutes(mux)
 	a.registerFsRoutes(mux)
@@ -44,22 +46,29 @@ func (a *App) registerSystemRoutes(mux *http.ServeMux) {
 	})
 
 	mux.HandleFunc("GET /api/v1/config", func(w http.ResponseWriter, r *http.Request) {
+		// 令牌要先解密判断再取快照，不能在持有读锁时再进一层读锁（写者排队时会死锁）。
+		githubSet := a.config.GitHubTokenValue() != ""
+		atomgitSet := a.config.AtomGitTokenValue() != ""
 		a.config.mu.RLock()
-		defer a.config.mu.RUnlock()
+		lastCwd, localBin := a.config.LastCwd, a.config.LocalBin
+		a.config.mu.RUnlock()
 		writeJSON(w, http.StatusOK, map[string]any{
-			"lastCwd":        a.config.LastCwd,
-			"home":           homeDir(),
-			"localBin":       a.config.LocalBin,
-			"githubTokenSet": a.config.GitHubToken != "",
-			"githubTokenEnv": strings.TrimSpace(os.Getenv("GITHUB_TOKEN")) != "",
+			"lastCwd":         lastCwd,
+			"home":            homeDir(),
+			"localBin":        localBin,
+			"githubTokenSet":  githubSet,
+			"githubTokenEnv":  strings.TrimSpace(os.Getenv("GITHUB_TOKEN")) != "",
+			"atomgitTokenSet": atomgitSet,
+			"tokenProtected":  secretProtected(),
 		})
 	})
 
 	mux.HandleFunc("POST /api/v1/config", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			LastCwd     string  `json:"lastCwd"`
-			LocalBin    string  `json:"localBin"`
-			GitHubToken *string `json:"githubToken"`
+			LastCwd      string  `json:"lastCwd"`
+			LocalBin     string  `json:"localBin"`
+			GitHubToken  *string `json:"githubToken"`
+			AtomGitToken *string `json:"atomgitToken"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "请求体不是 JSON")
@@ -75,7 +84,14 @@ func (a *App) registerSystemRoutes(mux *http.ServeMux) {
 			a.config.SetGitHubToken(*body.GitHubToken)
 			a.updates.Invalidate()
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "githubTokenSet": a.config.GitHubTokenValue() != ""})
+		if body.AtomGitToken != nil {
+			a.config.SetAtomGitToken(*body.AtomGitToken)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":              true,
+			"githubTokenSet":  a.config.GitHubTokenValue() != "",
+			"atomgitTokenSet": a.config.AtomGitTokenValue() != "",
+		})
 	})
 }
 
@@ -245,6 +261,90 @@ func (a *App) registerCliRoutes(mux *http.ServeMux) {
 	})
 }
 
+// registerGatewayRoutes 内置 agentgateway：安装、启停、配置、指标与终端接管。
+// 接管按 CLI 勾选，只影响新开的终端；不勾选时一切照旧。
+func (a *App) registerGatewayRoutes(mux *http.ServeMux) {
+	// snapshot 拼一份给界面的完整视图；metrics 可选（要连管理端口抓一次）。
+	snapshot := func(r *http.Request) map[string]any {
+		out := map[string]any{
+			"settings":      a.gateway.Settings(),
+			"status":        a.gateway.Status(),
+			"job":           a.gateway.Job(),
+			"logs":          a.gateway.Logs(80),
+			"config":        a.gateway.ConfigYAML(),
+			"defaults":      defaultGatewaySettings(),
+			"pinnedVersion": gatewayDefaultVersion,
+			"routes":        a.gateway.RouteRows(),
+		}
+		if r.URL.Query().Get("metrics") == "1" {
+			out["metrics"] = a.gateway.Metrics()
+		}
+		return out
+	}
+
+	mux.HandleFunc("GET /api/v1/gateway", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, snapshot(r))
+	})
+
+	mux.HandleFunc("POST /api/v1/gateway/config", func(w http.ResponseWriter, r *http.Request) {
+		var body GatewaySettings
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeError(w, http.StatusBadRequest, "请求体不是 JSON")
+			return
+		}
+		// 界面不暴露二进制路径；传空表示沿用现有值，避免一次保存把手工设置清掉。
+		if strings.TrimSpace(body.BinPath) == "" {
+			body.BinPath = a.gateway.Settings().BinPath
+		}
+		saved, err := a.gateway.SaveSettings(body)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "settings": saved, "config": a.gateway.ConfigYAML()})
+	})
+
+	mux.HandleFunc("POST /api/v1/gateway/install", func(w http.ResponseWriter, r *http.Request) {
+		if err := a.gateway.Install(); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "job": a.gateway.Job()})
+	})
+
+	mux.HandleFunc("POST /api/v1/gateway/start", func(w http.ResponseWriter, r *http.Request) {
+		if err := a.gateway.Start(); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": a.gateway.Status()})
+	})
+
+	mux.HandleFunc("POST /api/v1/gateway/stop", func(w http.ResponseWriter, r *http.Request) {
+		if err := a.gateway.Stop(); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": a.gateway.Status()})
+	})
+
+	mux.HandleFunc("POST /api/v1/gateway/restart", func(w http.ResponseWriter, r *http.Request) {
+		_ = a.gateway.Stop()
+		if err := a.gateway.Start(); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": a.gateway.Status()})
+	})
+
+	// 配置文件原文：面板里给一个可复制的预览，别让人去翻目录。
+	mux.HandleFunc("GET /api/v1/gateway/config.yaml", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write([]byte(a.gateway.ConfigYAML()))
+	})
+}
+
 // registerPipelineRoutes 流水线调度与 LoopForge 安装。
 func (a *App) registerPipelineRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/pipeline", func(w http.ResponseWriter, r *http.Request) {
@@ -386,7 +486,11 @@ func (a *App) registerSessionRoutes(mux *http.ServeMux) {
 			writeError(w, http.StatusBadRequest, "缺少 command")
 			return
 		}
-		session, err := a.sessions.Start(body.Command, body.Cwd)
+		// 勾了接管的 CLI，这里会带上「上游地址指向本地网关」的环境变量/启动参数；
+		// 没勾或网关起不来时返回空，终端按原方式启动。
+		routeEnv, routeArgs := a.gateway.Takeover(body.Agent)
+		routed := len(routeEnv) > 0 || len(routeArgs) > 0
+		session, err := a.sessions.Start(body.Command, body.Cwd, routeEnv, routed)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -395,7 +499,12 @@ func (a *App) registerSessionRoutes(mux *http.ServeMux) {
 			session.SetAgent(body.Agent)
 		}
 		a.config.SetLastCwd(body.Cwd)
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "session": session.Snapshot()})
+		resp := map[string]any{"ok": true, "session": session.Snapshot()}
+		// 想接管却没接上（网关没装/起不来）时明确告诉界面，别让人以为已经走网关了。
+		if !routed && a.gateway.TakeoverEnabled(body.Agent) {
+			resp["warning"] = "网关没准备好，这个终端按原方式直连上游；去「设置 → 网关」看看状态"
+		}
+		writeJSON(w, http.StatusOK, resp)
 	})
 
 	mux.HandleFunc("POST /api/v1/sessions/{id}/input", func(w http.ResponseWriter, r *http.Request) {

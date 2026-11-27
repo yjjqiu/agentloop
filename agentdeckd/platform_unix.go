@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"syscall"
 
 	"github.com/creack/pty"
 )
@@ -59,10 +60,11 @@ func (p *unixPTY) Close() error {
 }
 
 // startPTY 用 /bin/sh 启动命令，并把 stdio 接到伪终端。
-func startPTY(command, workdir string, cols, rows int) (ptyHost, error) {
+// extraEnv 覆盖继承环境里的同名变量（网关接管时用来改上游地址）。
+func startPTY(command, workdir string, cols, rows int, extraEnv []string) (ptyHost, error) {
 	cmd := exec.Command("/bin/sh", "-c", "exec "+command)
 	cmd.Dir = workdir
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	cmd.Env = mergeEnv(append(os.Environ(), "TERM=xterm-256color"), extraEnv)
 	file, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 	if err != nil {
 		return nil, err
@@ -107,6 +109,31 @@ func installCommand(ctx context.Context, task jobTask) *exec.Cmd {
 func isExeFile(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
+}
+
+// processAlive 判断 pid 对应的进程是否还在。
+func processAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+// killProcessTree 结束进程组（启动时用 detachProcess 设了 Setpgid）。
+func killProcessTree(pid int) error {
+	if pid <= 0 {
+		return fmt.Errorf("无效的进程号")
+	}
+	if err := syscall.Kill(-pid, syscall.SIGKILL); err == nil {
+		return nil
+	}
+	return syscall.Kill(pid, syscall.SIGKILL)
+}
+
+// detachProcess 让子进程独立成组，便于连同子进程一起结束。
+func detachProcess(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 
 // pathExtensions 在 POSIX 下不靠扩展名找可执行文件。

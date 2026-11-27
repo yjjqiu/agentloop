@@ -97,11 +97,19 @@
             <span class="term-spacer"></span>
             <button id="chatNew" class="btn mini" type="button">新对话</button>
           </div>
+          <div class="chat-repo-bar" id="chatRepoBar" hidden>
+            <span class="repo-bar-label">仓库</span>
+            <span class="chat-repos" id="chatRepos" hidden>
+              <button class="chat-repo" id="repoGithub" type="button" title="这个项目对应的 GitHub 仓库"></button>
+              <button class="chat-repo" id="repoAtomgit" type="button" title="这个项目对应的 AtomGit 仓库"></button>
+            </span>
+          </div>
           <div class="term-bar">
             <span class="term-ava" id="termAva"></span>
             <span class="term-dot" id="termDot"></span>
             <span class="term-title" id="termTitle">没有活动终端</span>
             <span class="pill" id="termBadge" hidden></span>
+            <span class="pill gw-pill" id="termGw" hidden title="这个终端的请求经内置 agentgateway 转发">网关</span>
             <span class="ctx-meter" id="ctxMeter" hidden>
               <span class="ctx-bar"><i id="ctxFill"></i></span>
               <span class="ctx-label" id="ctxLabel">上下文 —</span>
@@ -319,6 +327,10 @@
           <span>终端 CLI</span>
           <small>路径、参数与版本</small>
         </button>
+        <button class="settings-tab" type="button" data-tab="gateway" role="tab">
+          <span>网关</span>
+          <small>agentgateway · 指标</small>
+        </button>
         <button class="settings-tab" type="button" data-tab="wf" role="tab">
           <span>工作流</span>
           <small>右侧面板开关</small>
@@ -352,6 +364,96 @@
             <div class="cli-job-log" id="cliJobLog"></div>
           </div>
         </div>
+        <div class="settings-pane" id="paneGateway" hidden>
+          <div class="gw-hero">
+            <div class="gw-hero-main">
+              <span class="gw-dot" id="gwDot" aria-hidden="true"></span>
+              <div class="gw-hero-text">
+                <b id="gwState">正在检测…</b>
+                <small id="gwMeta">agentgateway · 未安装</small>
+              </div>
+            </div>
+            <div class="gw-actions" id="gwActions"></div>
+          </div>
+
+          <div class="gw-job" id="gwJob" hidden>
+            <div class="gw-job-head">
+              <span id="gwJobPhase">下载中</span>
+              <span id="gwJobPct"></span>
+            </div>
+            <div class="gw-bar"><i id="gwBar"></i></div>
+          </div>
+
+          <div class="gw-tiles" id="gwTiles"></div>
+
+          <div class="gw-form">
+            <label class="gw-field">
+              <span>上游地址</span>
+              <input id="gwUpstream" type="text" spellcheck="false" autocomplete="off" placeholder="http://127.0.0.1:3425">
+              <em>默认指向本机 magpie 网关；换成任意 Anthropic 兼容端点也行</em>
+            </label>
+            <label class="gw-field">
+              <span>上游 Key</span>
+              <input id="gwKey" type="password" spellcheck="false" autocomplete="off" placeholder="magpie">
+              <em>回环地址用 magpie 的短串即可</em>
+            </label>
+            <label class="gw-field">
+              <span>业务端口</span>
+              <input id="gwPort" type="number" min="1" max="65535" spellcheck="false">
+              <em>说 Anthropic Messages 的 CLI 对接它</em>
+            </label>
+            <label class="gw-field">
+              <span>代理端口</span>
+              <input id="gwProxyPort" type="number" min="1" max="65535" spellcheck="false">
+              <em>Codex / Gemini 这类协议原样转发，走这个口</em>
+            </label>
+            <label class="gw-field">
+              <span>管理端口</span>
+              <input id="gwAdminPort" type="number" min="1" max="65535" spellcheck="false">
+              <em>管理台与 /metrics 都在这</em>
+            </label>
+          </div>
+
+          <div class="gw-actions-row">
+            <label class="set-switch"><input type="checkbox" id="gwAuto"> 随 AgentDeck 启动</label>
+            <span class="gw-saved" id="gwSaved">已保存</span>
+            <span class="gw-spacer"></span>
+            <button id="gwOpenAdmin" class="btn mini" type="button">打开管理台</button>
+            <button id="gwRestart" class="btn mini ghost" type="button">重启生效</button>
+            <button id="gwSave" class="btn mini primary" type="button">保存</button>
+          </div>
+
+          <div class="gw-takeover">
+            <div class="gw-takeover-head">
+              <b>终端接管</b>
+              <small>勾选的 CLI，新开终端会经网关转发；已开着的终端要重启才生效</small>
+            </div>
+            <div class="gw-routes" id="gwRoutes"></div>
+            <p class="gw-takeover-warn" id="gwRouteWarn" hidden>网关停掉或改端口，已接管的终端会立即断线，需要重开终端。</p>
+          </div>
+
+          <details class="gw-details">
+            <summary>高级：用已有的 agentgateway 二进制</summary>
+            <div class="gw-field gw-field-inline">
+              <span>二进制路径</span>
+              <input id="gwBin" type="text" spellcheck="false" autocomplete="off" placeholder="留空 = 用托管目录里的那份">
+              <em>已经自己下过的话填绝对路径，免掉 100MB 下载；保存后点「重启生效」</em>
+            </div>
+          </details>
+
+          <details class="gw-details">
+            <summary>生成的配置（只读，手改会被覆盖）</summary>
+            <pre id="gwConfig" class="gw-code">—</pre>
+          </details>
+
+          <details class="gw-details">
+            <summary>运行日志</summary>
+            <pre id="gwLog" class="gw-code">—</pre>
+          </details>
+
+          <p class="pane-hint">勾了「终端接管」的 CLI，新开终端会先把请求打到 <code id="gwUrlInline">http://127.0.0.1:4000</code>
+            再转发给上游，这里的指标就是它们真实的用量；没勾的终端一切照旧。也可以在管理台的 Playground 里手动试。</p>
+        </div>
         <div class="settings-pane" id="paneWf" hidden>
           <div class="set-row">
             <div class="set-row-text">
@@ -366,6 +468,13 @@
               <small>面板用来查看每个任务 6 个阶段的进度和 CLI 分配。</small>
             </div>
             <button id="wfPanelOpen" class="btn mini" type="button">打开</button>
+          </div>
+          <div class="set-row">
+            <div class="set-row-text">
+              <b>项目对话提示词</b>
+              <small>每个项目第一次打开对话终端时会问「要不要先发一段现状汇报」，并记住选择；这里可以清掉所有记住的选择，下次重新询问。</small>
+            </div>
+            <button id="chatPromptReset" class="btn mini" type="button">重新询问</button>
           </div>
           <p class="pane-hint">面板内容随项目切换自动刷新；关闭后可以从这里重新打开。</p>
         </div>
@@ -463,6 +572,70 @@
         <a class="rel-link" id="relLink" target="_blank" rel="noopener" hidden>在 GitHub 查看 →</a>
       </div>
     </aside>
+  </div>
+</div>
+
+<div class="modal" id="repoModal" hidden>
+  <div class="modal-card repo-card">
+    <div class="modal-head">
+      <h2 id="repoTitle">仓库</h2>
+      <p id="repoSub">读取项目远端与平台信息</p>
+    </div>
+    <div class="repo-top">
+      <span class="repo-badge" id="repoVisibility">—</span>
+      <span class="repo-branch" id="repoBranch"></span>
+      <span class="term-spacer"></span>
+      <a id="repoOpenWeb" class="btn mini" href="#" target="_blank" rel="noreferrer">在浏览器打开</a>
+    </div>
+    <div class="repo-sync">
+      <span class="repo-sync-state" id="repoSyncState">正在读取…</span>
+      <span class="term-spacer"></span>
+      <button id="repoFetch" class="btn mini" type="button" title="git fetch --all --prune">获取</button>
+      <button id="repoPull" class="btn mini" type="button" title="git pull --ff-only">拉取</button>
+      <button id="repoPush" class="btn mini primary" type="button" title="git push">推送</button>
+    </div>
+    <pre class="repo-output" id="repoOutput" hidden></pre>
+    <div class="repo-token" id="repoTokenBox" hidden>
+      <p class="pane-hint" id="repoTokenHint">私有仓库需要访问令牌。</p>
+      <div class="row">
+        <input id="repoTokenInput" type="password" spellcheck="false" autocomplete="off" placeholder="粘贴访问令牌">
+        <button id="repoTokenSave" class="btn mini primary" type="button">保存</button>
+        <button id="repoTokenClear" class="btn mini" type="button" hidden>清除</button>
+      </div>
+    </div>
+    <p class="repo-meta" id="repoMeta" hidden></p>
+    <div class="repo-section">
+      <b>最近提交</b>
+      <ul class="repo-list" id="repoCommits"></ul>
+    </div>
+    <div class="repo-section">
+      <b>未合并的合并请求</b>
+      <ul class="repo-list" id="repoPulls"></ul>
+    </div>
+    <div class="modal-foot">
+      <span class="modal-hint" id="repoFootHint">—</span>
+      <button id="repoRefresh" class="btn mini" type="button">刷新</button>
+      <button id="repoClose" class="btn primary" type="button">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="chatPromptModal" hidden>
+  <div class="modal-card narrow">
+    <div class="modal-head">
+      <h2>要发现状提示词吗？</h2>
+      <p>项目对话会先让 CLI 通读项目、汇报进度和功能树，并要求不修改代码。这次发不发？</p>
+    </div>
+    <pre class="chat-prompt-text" id="chatPromptText"></pre>
+    <label class="set-switch chat-prompt-remember">
+      <input type="checkbox" id="chatPromptRemember" checked>
+      记住这个选择，以后不再询问
+    </label>
+    <div class="modal-foot">
+      <span class="modal-hint"><kbd>Esc</kbd> 取消</span>
+      <button id="chatPromptSkip" class="btn ghost" type="button">不发，直接开始</button>
+      <button id="chatPromptSend" class="btn primary" type="button">发送并开始</button>
+    </div>
   </div>
 </div>
 
@@ -601,6 +774,7 @@
 <script src="brand-logos.js?v=0.3.9"></script>
 <script src="avatars.js?v=0.3.9"></script>
 <script src="app.js?v=0.3.9"></script>
+<script src="gateway.js?v=0.3.9"></script>
 <script src="board.js?v=0.3.9"></script>
 <script src="docs.js?v=0.3.9"></script>
 </body>
