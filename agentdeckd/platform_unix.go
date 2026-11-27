@@ -26,6 +26,14 @@ type unixPTY struct {
 func (p *unixPTY) Read(b []byte) (int, error)  { return p.file.Read(b) }
 func (p *unixPTY) Write(b []byte) (int, error) { return p.file.Write(b) }
 
+// PID 返回终端根进程号。
+func (p *unixPTY) PID() int {
+	if p.cmd.Process == nil {
+		return 0
+	}
+	return p.cmd.Process.Pid
+}
+
 // Resize 调整 PTY 窗口大小。
 func (p *unixPTY) Resize(cols, rows int) error {
 	return pty.Setsize(p.file, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})

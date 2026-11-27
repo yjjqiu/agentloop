@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ type ptyHost interface {
 	Resize(cols, rows int) error
 	Wait(ctx context.Context) (uint32, error)
 	Close() error
+	PID() int // 终端根进程，用来统计这个会话的内存占用
 }
 
 // Event 是推给前端的一条终端事件。
@@ -36,6 +38,7 @@ type Session struct {
 	agent    string // 会话对应的 CLI id（流水线派发时写入，界面用来画品牌头像）
 	Cwd      string
 	Started  time.Time // 启动时刻，用来在 CLI 的会话记录里定位本终端对应的文件
+	pid      int       // 终端根进程，资源明细用
 	pty      ptyHost
 	mu       sync.Mutex
 	subs     map[chan Event]struct{}
@@ -243,6 +246,57 @@ func (m *SessionManager) List() []SessionSnapshot {
 	return out
 }
 
+// sessionUsage 是单个终端会话的资源占用，供顶栏「资源明细」面板展示。
+type sessionUsage struct {
+	ID     string `json:"id"`
+	Title  string `json:"title,omitempty"`
+	Label  string `json:"label"`
+	Agent  string `json:"agent,omitempty"`
+	Cwd    string `json:"cwd"`
+	State  string `json:"state"`
+	PID    int    `json:"pid"`
+	Mem    uint64 `json:"mem"`
+	Uptime int64  `json:"uptime"`
+}
+
+// Usage 返回全部会话的占用，按内存从大到小排序。
+// 只有仍在运行的会话才去算内存：进程退出后 pid 可能被复用，算出来是别人的。
+func (m *SessionManager) Usage() []sessionUsage {
+	m.mu.Lock()
+	items := make([]*Session, 0, len(m.items))
+	for _, s := range m.items {
+		items = append(items, s)
+	}
+	m.mu.Unlock()
+
+	out := make([]sessionUsage, 0, len(items))
+	for _, s := range items {
+		s.mu.Lock()
+		usage := sessionUsage{
+			ID:     s.ID,
+			Title:  s.title,
+			Label:  s.Label,
+			Agent:  s.agent,
+			Cwd:    s.Cwd,
+			State:  s.state,
+			PID:    s.pid,
+			Uptime: int64(time.Since(s.Started).Seconds()),
+		}
+		s.mu.Unlock()
+		if usage.State == "running" {
+			usage.Mem = processTreeMem(usage.PID)
+		}
+		out = append(out, usage)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Mem != out[j].Mem {
+			return out[i].Mem > out[j].Mem
+		}
+		return out[i].Uptime > out[j].Uptime
+	})
+	return out
+}
+
 // Start 在指定工作目录启动一个 PTY 会话。
 func (m *SessionManager) Start(command, cwd string) (*Session, error) {
 	if err := ptyAvailable(); err != nil {
@@ -269,6 +323,7 @@ func (m *SessionManager) Start(command, cwd string) (*Session, error) {
 		Label:   command,
 		Cwd:     workdir,
 		Started: time.Now(),
+		pid:     handle.PID(),
 		pty:     handle,
 		subs:    make(map[chan Event]struct{}),
 		state:   "running",

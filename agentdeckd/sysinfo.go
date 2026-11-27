@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"os"
 	"runtime"
 	"time"
 )
@@ -25,10 +26,13 @@ type sysDiskBar struct {
 
 // sysSnapshot 是顶栏资源小插件的数据。
 type sysSnapshot struct {
-	OS   string     `json:"os"`
-	At   string     `json:"at"`
-	Mem  sysMemBar  `json:"mem"`
-	Disk sysDiskBar `json:"disk"`
+	OS       string         `json:"os"`
+	At       string         `json:"at"`
+	Mem      sysMemBar      `json:"mem"`
+	Disk     sysDiskBar     `json:"disk"`
+	Self     uint64         `json:"self"`     // AgentDeck 服务自身内存
+	Total    uint64         `json:"total"`    // 服务 + 全部终端会话
+	Sessions []sessionUsage `json:"sessions"` // 每个终端的占用明细
 }
 
 // collectSysSnapshot 读整机内存与数据目录所在磁盘。
@@ -50,8 +54,9 @@ func collectSysSnapshot(dataDir string) sysSnapshot {
 	}
 
 	return sysSnapshot{
-		OS: runtime.GOOS,
-		At: time.Now().Format(time.RFC3339),
+		OS:   runtime.GOOS,
+		At:   time.Now().Format(time.RFC3339),
+		Self: processMem(os.Getpid()),
 		Mem: sysMemBar{
 			Total:     total,
 			Used:      used,
@@ -66,6 +71,18 @@ func collectSysSnapshot(dataDir string) sysSnapshot {
 			Percent: ratioPercent(dtotal-dfree, dtotal),
 		},
 	}
+}
+
+// sysSnapshot 在整机数据上补上 AgentDeck 自己的终端明细。
+// Self 只算服务进程本身，Total 才是服务 + 所有会话。
+func (a *App) sysSnapshot() sysSnapshot {
+	snap := collectSysSnapshot(a.dataDir)
+	snap.Sessions = a.sessions.Usage()
+	snap.Total = snap.Self
+	for _, usage := range snap.Sessions {
+		snap.Total += usage.Mem
+	}
+	return snap
 }
 
 // percentOf 计算百分比并保留一位小数；总量为 0 时返回 0。

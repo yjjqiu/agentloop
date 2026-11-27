@@ -40,7 +40,7 @@ func (a *App) registerSystemRoutes(mux *http.ServeMux) {
 	})
 
 	mux.HandleFunc("GET /api/v1/sysinfo", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, collectSysSnapshot(a.dataDir))
+		writeJSON(w, http.StatusOK, a.sysSnapshot())
 	})
 
 	mux.HandleFunc("GET /api/v1/update/check", func(w http.ResponseWriter, r *http.Request) {

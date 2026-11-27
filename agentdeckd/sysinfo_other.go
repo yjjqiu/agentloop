@@ -6,3 +6,7 @@ package main
 func readMemInfo() (total, available uint64) { return 0, 0 }
 
 func readDiskInfo(path string) (total, free uint64) { return 0, 0 }
+
+func processMem(pid int) uint64 { return 0 }
+
+func processTreeMem(pid int) uint64 { return 0 }

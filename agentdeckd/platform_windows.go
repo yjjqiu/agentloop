@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/UserExistsError/conpty"
@@ -17,17 +18,36 @@ import (
 
 // —— Windows 平台实现：ConPTY、cmd.exe 包装、npm 全局目录 ——
 
+// ptyStartMu 串行化 ConPTY 启动，保证「启动前后对比子进程」能认准本次的根进程。
+var ptyStartMu sync.Mutex
+
+// winPTY 在 conpty 句柄外再记下根进程 pid，用来统计这个终端的资源占用。
+type winPTY struct {
+	*conpty.ConPty
+	pid int
+}
+
+func (p *winPTY) PID() int { return p.pid }
+
 // startPTY 用 ConPTY 启动命令。
 func startPTY(command, workdir string, cols, rows int) (ptyHost, error) {
 	opts := []conpty.ConPtyOption{
 		conpty.ConPtyDimensions(cols, rows),
 		conpty.ConPtyWorkDir(workdir),
 	}
+	// conpty 不暴露子进程 pid，只能对比启动前后多出来的直接子进程。
+	ptyStartMu.Lock()
+	before := childProcessIDs(os.Getpid())
 	handle, err := conpty.Start(wrapCommand(command), opts...)
+	pid := 0
+	if err == nil {
+		pid = newChildProcessID(os.Getpid(), before)
+	}
+	ptyStartMu.Unlock()
 	if err != nil {
 		return nil, err
 	}
-	return handle, nil
+	return &winPTY{ConPty: handle, pid: pid}, nil
 }
 
 // ptyAvailable 检查系统是否支持 ConPTY。

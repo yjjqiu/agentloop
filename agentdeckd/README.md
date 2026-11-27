@@ -158,7 +158,7 @@ CLI 列表顶部有两个版本操作：
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/v1/health` | 探活 `{status,version,repo,platform,auth,sessions}`；`auth=true` 表示要令牌 |
-| GET | `/api/v1/sysinfo` | 顶栏资源小插件：`{os,at,mem{total,used,available,percent},disk{path,total,used,free,percent}}`，单位字节 |
+| GET | `/api/v1/sysinfo` | 顶栏资源小插件：`{os,at,mem{total,used,available,percent},disk{path,total,used,free,percent},self,total,sessions[]{id,title,label,agent,cwd,state,pid,mem,uptime}}`，内存单位字节、时长单位秒 |
 | GET | `/api/v1/update/check?force=1` | 最新正式版 `{current,latest,available,url,notes,assets[]}`，`force=1` 跳过缓存 |
 | GET | `/api/v1/projects` | 项目列表 + 当前项目 |
 | POST | `/api/v1/projects` | 添加项目 `{path}` |
@@ -394,6 +394,18 @@ CLI 表现一致。
   Linux 读 `/proc/meminfo` 与 `statfs`；容器里看到的是宿主机内存和宿主磁盘
 - 阈值：≥80% 变琥珀色，≥92% 变红色；悬停显示已用 / 总量和磁盘路径
 - 取不到数据的平台显示「—」，不影响其它功能
+
+### 资源明细面板（0.4.4）
+
+点小插件会展开「资源明细」：整机内存 / 磁盘进度条、AgentDeck 服务自身内存、
+每个终端会话的内存与已运行时长，右侧「关闭」按钮直接结束该会话。
+
+- 会话内存按 PTY 根进程的整棵进程树累计（Windows 走 Toolhelp32 + `GetProcessMemoryInfo`，
+  Linux 读 `/proc/<pid>/statm` 与 `stat`），所以 `claude` 拉起的子进程也算在内
+- `GET /api/v1/sysinfo` 增补字段：`self`（服务自身）、`total`（服务 + 终端合计）、
+  `sessions[]{id,title,label,agent,cwd,state,pid,mem,uptime}`，按内存从大到小
+- 只统计 AgentDeck 自己拉起的终端；机器上其它程序不在列表里，也关不了
+- 面板轮询只在数值变化时重建列表，避免点击时按钮被换掉
 
 ## 仓库同步（项目对话页）
 

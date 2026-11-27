@@ -1276,6 +1276,7 @@ function sysTone(el, pct) {
 function paintSysMeter(data) {
   const meter = $('sysMeter');
   if (!meter || !data || !data.mem || !data.disk) return;
+  sysLast = data;
   const mem = data.mem;
   const disk = data.disk;
   const memPct = mem.total ? Math.round(mem.percent || 0) : 0;
@@ -1298,6 +1299,7 @@ function paintSysMeter(data) {
   }
   meter.title = lines.join('\n');
   meter.hidden = false;
+  if (sysOpen) renderSysPanel();
 }
 
 async function refreshSysMeter() {
@@ -1306,10 +1308,131 @@ async function refreshSysMeter() {
 }
 
 function startSysPolling() {
+  bindSysPanel();
   refreshSysMeter();
   setInterval(() => {
     if (!document.hidden) refreshSysMeter();
   }, 10000);
+}
+
+// —— 资源明细面板（点顶栏小插件展开）——
+let sysLast = null;
+let sysOpen = false;
+let sysSessionsSig = '';
+
+function fmtMB(bytes) {
+  const mb = Number(bytes) / (1024 * 1024);
+  if (!Number.isFinite(mb) || mb <= 0) return '—';
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
+}
+
+function fmtUptime(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  if (total >= 86400) return `${Math.floor(total / 86400)} 天 ${Math.floor((total % 86400) / 3600)} 小时`;
+  if (total >= 3600) return `${Math.floor(total / 3600)} 小时 ${Math.floor((total % 3600) / 60)} 分`;
+  if (total >= 60) return `${Math.floor(total / 60)} 分`;
+  return `${total} 秒`;
+}
+
+function sysUsageRow(label, used, total, percent) {
+  const pct = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  const tone = pct >= 92 ? 'hot' : pct >= 80 ? 'warn' : '';
+  return `<div class="sys-usage-row"><span>${escapeHtml(label)}</span><b>${fmtGB(used)} / ${fmtGB(total)} GB · ${pct}%</b></div>
+    <span class="sys-usage-track ${tone}"><i style="width:${pct}%"></i></span>`;
+}
+
+function renderSysUsage(data) {
+  const mem = data.mem || {};
+  const disk = data.disk || {};
+  const parts = [];
+  if (mem.total) parts.push(sysUsageRow('内存', mem.used, mem.total, mem.percent));
+  if (disk.total) parts.push(sysUsageRow('磁盘', disk.used, disk.total, disk.percent));
+  const terminalMem = Math.max(0, Number(data.total || 0) - Number(data.self || 0));
+  parts.push(`<div class="sys-usage-foot"><span>AgentDeck 服务 ${fmtMB(data.self)}</span><span>终端合计 ${fmtMB(terminalMem)}</span></div>`);
+  $('sysUsage').innerHTML = parts.join('');
+}
+
+function renderSysSessions(data) {
+  const running = (data.sessions || []).filter((item) => item.state === 'running');
+  const sum = running.reduce((acc, item) => acc + (Number(item.mem) || 0), 0);
+  $('sysSessionMeta').textContent = running.length ? `${running.length} 个 · ${fmtMB(sum)}` : '没有在跑的终端';
+  // 数值没变就不重建 DOM：轮询每 10 秒一次，重建会把正在点的按钮换掉。
+  const signature = running.map((item) => `${item.id}:${Math.round((Number(item.mem) || 0) / 1048576)}`).join('|');
+  if (signature === sysSessionsSig) return;
+  sysSessionsSig = signature;
+  const box = $('sysSessions');
+  if (!running.length) {
+    box.innerHTML = '<div class="sys-empty">当前没有运行中的终端</div>';
+    return;
+  }
+  box.innerHTML = running.map((item) => {
+    const title = item.title || shortName(item.label || '终端');
+    const agent = item.agent ? `${item.agent} · ` : '';
+    return `<div class="sys-sess">
+      <div class="sys-sess-main">
+        <span class="sys-sess-title">${escapeHtml(title)}</span>
+        <span class="sys-sess-meta">${escapeHtml(agent)}已运行 ${fmtUptime(item.uptime)}</span>
+      </div>
+      <span class="sys-sess-mem">${fmtMB(item.mem)}</span>
+      <button class="btn mini" type="button" data-close-session="${escapeHtml(String(item.id))}">关闭</button>
+    </div>`;
+  }).join('');
+}
+
+function renderSysPanel() {
+  if (!sysLast || !sysOpen) return;
+  renderSysUsage(sysLast);
+  renderSysSessions(sysLast);
+  $('sysNote').textContent = sysLast.os === 'linux'
+    ? '只统计 AgentDeck 拉起的终端；服务器上其它程序不在这里。'
+    : '只统计 AgentDeck 拉起的终端；电脑上其它程序不在这里。';
+  const at = sysLast.at ? new Date(sysLast.at) : null;
+  $('sysPanelAt').textContent = at && !Number.isNaN(at.getTime())
+    ? at.toLocaleTimeString('zh-CN', { hour12: false })
+    : '';
+}
+
+function setSysPanel(open) {
+  sysOpen = open;
+  const panelEl = $('sysPanel');
+  if (!panelEl) return;
+  panelEl.hidden = !open;
+  if (open) {
+    renderSysPanel();
+    refreshSysMeter();
+  }
+}
+
+function bindSysPanel() {
+  const meter = $('sysMeter');
+  const panelEl = $('sysPanel');
+  if (!meter || !panelEl) return;
+  meter.addEventListener('click', () => setSysPanel(!sysOpen));
+  meter.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      setSysPanel(!sysOpen);
+    }
+  });
+  $('sysPanelClose').addEventListener('click', () => setSysPanel(false));
+  document.addEventListener('click', (event) => {
+    if (!sysOpen) return;
+    if (panelEl.contains(event.target) || meter.contains(event.target)) return;
+    setSysPanel(false);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (sysOpen && event.key === 'Escape') setSysPanel(false);
+  });
+  $('sysSessions').addEventListener('click', async (event) => {
+    const btn = event.target.closest('[data-close-session]');
+    if (!btn) return;
+    const id = btn.getAttribute('data-close-session');
+    btn.disabled = true;
+    btn.textContent = '关闭中';
+    await api.kill(id);
+    if (sessions.has(id)) removeSession(id);
+    await refreshSysMeter();
+  });
 }
 
 // —— 终端 ——
